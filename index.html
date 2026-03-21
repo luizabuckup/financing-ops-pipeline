@@ -84,7 +84,10 @@ function App(){
         fetch(`${WORKER}/rest/api/3/search/jql?jql=${jql2}&maxResults=100&fields=${fields}`)
       ]);
       const [d1,d2]=await Promise.all([r1.json(),r2.json()]);
-      const map=i=>({key:i.key,summary:i.fields?.summary||"",status:i.fields?.status?.name||"",assignee:i.fields?.assignee?.displayName||null,created:i.fields?.created,updated:i.fields?.updated,hub:i.fields?.customfield_22543?.value||null});
+      const map=i=>{
+        const hub=i.fields?.customfield_22543?.value||null;
+        return {key:i.key,summary:i.fields?.summary||"",status:i.fields?.status?.name||"",assignee:i.fields?.assignee?.displayName||null,created:i.fields?.created,updated:i.fields?.updated,hub};
+      };
       const sim=(d1.issues||[]).map(map);
       const con=(d2.issues||[]).map(i=>({...map(i),summary:pcs(i.fields?.summary||"")}));
       if(sim.length||con.length){setSd(sim);setCd(con);setLast(new Date());toast("✅ Dados atualizados do Jira","ok");}
