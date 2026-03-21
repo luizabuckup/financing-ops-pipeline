@@ -7,333 +7,228 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-<style>*{box-sizing:border-box;margin:0;padding:0;}body{font-family:'Inter',sans-serif;background:#f1f5f9;}</style>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,sans-serif;background:#f1f5f9}</style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const { useState, useMemo, useRef, useEffect } = React;
+const {useState,useMemo,useEffect}=React;
+const JIRA="https://kavak.atlassian.net";
+const PROXY="https://jira-proxy-9lr5b103t-luizabuckups-projects.vercel.app/api/proxy";
+const SIM_TYPE="13327",CON_TYPE="10478",PROJ="BSO";
 
-const JIRA_URL  = "https://kavak.atlassian.net";
-const PROXY_URL = "https://jira-proxy-9lr5b103t-luizabuckups-projects.vercel.app/api/proxy";
-const PROJECT   = "BSO";
-const SIM_ISSUETYPE = "13327";
-const CON_ISSUETYPE = "10478";
-
-const SIM_COLS = [
-  { id:"em_andamento",   label:"Em Andamento",       icon:"🔄", bg:"#f0fdf4", border:"#bbf7d0", badge:"#16a34a", statuses:["em andamento","tarefas pendentes"] },
-  { id:"envio_proposta", label:"Envio de Proposta",  icon:"📤", bg:"#fefce8", border:"#fde68a", badge:"#d97706", statuses:["envio de proposta"] },
-  { id:"analise_docs",   label:"Análise de Docs",    icon:"🔍", bg:"#eff6ff", border:"#bfdbfe", badge:"#2563eb", statuses:["análise documentos","analise documentos"] },
-  { id:"ag_cliente",     label:"Aguardando Cliente", icon:"👤", bg:"#fdf2f8", border:"#f9a8d4", badge:"#be185d", statuses:["pending documentation","waiting for se","aguardando cliente"] },
+const SC=[
+  {id:"em_andamento",label:"Em Andamento",icon:"🔄",bg:"#f0fdf4",bd:"#bbf7d0",bk:"#16a34a",st:["em andamento","tarefas pendentes"]},
+  {id:"envio_proposta",label:"Envio de Proposta",icon:"📤",bg:"#fefce8",bd:"#fde68a",bk:"#d97706",st:["envio de proposta"]},
+  {id:"analise_docs",label:"Análise de Docs",icon:"🔍",bg:"#eff6ff",bd:"#bfdbfe",bk:"#2563eb",st:["análise documentos","analise documentos"]},
+  {id:"ag_cliente",label:"Aguardando Cliente",icon:"👤",bg:"#fdf2f8",bd:"#f9a8d4",bk:"#be185d",st:["pending documentation","waiting for se","aguardando cliente"]},
 ];
-const SIM_COL_TARGET = { em_andamento:"Em andamento", envio_proposta:"ENVIO DE PROPOSTA", analise_docs:"ANÁLISE DOCUMENTOS", ag_cliente:"Aguardando Cliente" };
-
-const CON_COLS = [
-  { id:"em_andamento", label:"Em Andamento",       icon:"🔄", bg:"#f0fdf4", border:"#bbf7d0", badge:"#16a34a", statuses:["em andamento","tarefas pendentes"] },
-  { id:"contrato_ass", label:"Contrato Assinado",  icon:"✅", bg:"#dcfce7", border:"#86efac", badge:"#15803d", statuses:["contract signed","contrato assinado"] },
-  { id:"aguardando",   label:"Aguardando Cliente", icon:"⏳", bg:"#fef3c7", border:"#fcd34d", badge:"#d97706", statuses:["aguardando se","aguardando finops","awaiting financial (fiscal)","aguardando financial","aguardando bko","aguardando entrega","se replied"] },
+const CC=[
+  {id:"em_andamento",label:"Em Andamento",icon:"🔄",bg:"#f0fdf4",bd:"#bbf7d0",bk:"#16a34a",st:["em andamento","tarefas pendentes"]},
+  {id:"contrato_ass",label:"Contrato Assinado",icon:"✅",bg:"#dcfce7",bd:"#86efac",bk:"#15803d",st:["contract signed","contrato assinado"]},
+  {id:"aguardando",label:"Aguardando Cliente",icon:"⏳",bg:"#fef3c7",bd:"#fcd34d",bk:"#d97706",st:["aguardando se","aguardando finops","awaiting financial (fiscal)","aguardando financial","aguardando bko","aguardando entrega","se replied"]},
 ];
-const CON_COL_TARGET = { em_andamento:"Em andamento", contrato_ass:"CONTRACT SIGNED", aguardando:"Aguardando SE" };
-const IGNORED = ["cancelado","cancelada","concluído","concluido","done","closed","resolvido","resolved","fechada"];
+const IGN=["cancelado","cancelada","concluído","concluido","done","closed","resolvido","resolved","fechada"];
+function cid(s,cols){const v=(s||"").trim().toLowerCase();if(IGN.includes(v))return null;for(const c of cols)if(c.st.includes(v))return c.id;return cols[0].id;}
+function pcs(raw){const m=f=>{const r=(raw||"").match(new RegExp(`\\*${f}:\\*\\s*([^\\*•\\|]+)`));return r?r[1].trim().replace(/<[^>]+>/g,"").trim():null;};const cl=m("Cliente"),pl=m("Placa"),pg=m("Forma de Pagamento");if(cl)return`${cl}${pl?` · ${pl}`:""}${pg?` · ${pg}`:""}`;return(raw||"").replace(/<[^>]+>/g,"").slice(0,120);}
 
-function colIdForStatus(status, cols) {
-  const s = (status||"").trim().toLowerCase();
-  if (IGNORED.includes(s)) return null;
-  for (const col of cols) { if (col.statuses.includes(s)) return col.id; }
-  return cols[0].id;
-}
+const SIM=[
+  {key:"BSO-193722",summary:"exceção - 495309",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-20T14:54:24.577-0600",updated:"2026-03-20T15:02:52.030-0600",hub:"BOTMAKER"},
+  {key:"BSO-193721",summary:"EXCEÇÃO ENTRADA - 486917 - PISO",status:"ENVIO DE PROPOSTA",assignee:"VINICIUS LARANJEIRA",created:"2026-03-20T14:46:12.316-0600",updated:"2026-03-20T15:01:07.479-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193719",summary:"exceção de entrada - 485002",status:"ENVIO DE PROPOSTA",assignee:"LUIS MIRAMAR",created:"2026-03-20T14:37:53.601-0600",updated:"2026-03-20T15:06:14.935-0600",hub:"BOTMAKER"},
+  {key:"BSO-193716",summary:"EXCEÇÃO ENTRADA - 493357 - PISO",status:"ENVIO DE PROPOSTA",assignee:"NATANAEL NOBRE",created:"2026-03-20T14:23:15.957-0600",updated:"2026-03-20T14:48:50.929-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193713",summary:"EXCEÇÃO - 494967 - PISO",status:"ENVIO DE PROPOSTA",assignee:"SANTINO AZEVEDO",created:"2026-03-20T13:38:54.153-0600",updated:"2026-03-20T13:52:22.735-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193712",summary:"EXCEÇÃO - AURORA CONCEIÇÃO - PISO PRIORIDADE IDOSA",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-20T13:14:51.514-0600",updated:"2026-03-20T14:20:07.212-0600",hub:"SP MARKET"},
+  {key:"BSO-193710",summary:"Exceção - 490969",status:"ENVIO DE PROPOSTA",assignee:"Jose Moura",created:"2026-03-20T12:48:48.761-0600",updated:"2026-03-20T13:11:15.403-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193707",summary:"Exceção - 492653 - PISO",status:"ENVIO DE PROPOSTA",assignee:"Athos Medeiros Cunha",created:"2026-03-20T12:41:42.973-0600",updated:"2026-03-20T13:55:11.982-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193706",summary:"Exceção - 493617",status:"ENVIO DE PROPOSTA",assignee:"NATANAEL NOBRE",created:"2026-03-20T12:39:07.412-0600",updated:"2026-03-20T13:13:47.516-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193705",summary:"Trade in em piso - Exceção na taxa - 494197",status:"ENVIO DE PROPOSTA",assignee:"SANTINO AZEVEDO",created:"2026-03-20T12:38:43.173-0600",updated:"2026-03-20T14:34:57.720-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193686",summary:"Estimativa 26468527 - TERCIO SANTOS RIBEIRO",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-20T09:54:51.644-0600",updated:"2026-03-20T14:37:36.710-0600",hub:null},
+  {key:"BSO-193685",summary:"exceção - 481715",status:"ENVIO DE PROPOSTA",assignee:"Jose Moura",created:"2026-03-20T09:52:36.749-0600",updated:"2026-03-20T11:30:51.577-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193664",summary:"Estimativa 26468580 - Willians Roger da Silva",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-19T13:48:02.612-0600",updated:"2026-03-20T14:36:52.598-0600",hub:null},
+  {key:"BSO-193636",summary:"exceção - 490233 - PISO",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-19T07:20:35.579-0600",updated:"2026-03-20T06:55:49.560-0600",hub:null},
+];
 
-const SLA_H = 24;
-function getSla(d,l){const h=(Date.now()-new Date(d))/36e5;return h>l?"breach":h>l*.75?"warning":"ok";}
-function fmtDate(d){return d?new Date(d).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";}
-function hrsAgo(d){return d?Math.round((Date.now()-new Date(d))/36e5):null;}
-function initials(n=""){return n.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();}
+const CON=[
+  {key:"BSO-193723",raw:"*Estimativa:* 26469347 *Placa:* LMP9H35 | *Stock ID:*  494640 *Cliente*: Tereza Santos Melo *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"VINICIUS LARANJEIRA",created:"2026-03-20T15:07:52.735-0600",updated:"2026-03-20T15:13:26.132-0600"},
+  {key:"BSO-193717",raw:"*Estimativa:* 26467888 *Placa:* DFE8C93 | *Stock ID:*  490934 *Cliente*: MARIA DO SOCORRO BARBOSA BRUCK *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"Jose Moura",created:"2026-03-20T14:24:05.728-0600",updated:"2026-03-20T15:15:43.363-0600"},
+  {key:"BSO-193673",raw:"*Estimativa:* 26468868 *Placa:* FZR6476 | *Stock ID:*  489403 *Cliente*: Luiz Antonio Cornatione *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Aguardando SE",assignee:"Jose Moura",created:"2026-03-20T06:33:47.793-0600",updated:"2026-03-20T13:58:38.824-0600"},
+  {key:"BSO-193566",raw:"*Estimativa:* 26467677 *Placa:* GEV6D02 | *Stock ID:*  493659 *Cliente*: Andre A Luiz Vitor *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Aguardando BKO",assignee:"Athos Medeiros Cunha",created:"2026-03-17T12:16:57.533-0600",updated:"2026-03-17T14:22:08.141-0600"},
+].map(t=>({...t,summary:pcs(t.raw)}));
+
+const SH=24;
+function sla(d,l){const h=(Date.now()-new Date(d))/36e5;return h>l?"breach":h>l*.75?"warning":"ok";}
+function fd(d){return d?new Date(d).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";}
+function ha(d){return d?Math.round((Date.now()-new Date(d))/36e5):null;}
+function ini(n=""){return n.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();}
 const AC=["#6366f1","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"];
-function acolor(n=""){let h=0;for(const c of n)h=(h*31+c.charCodeAt(0))%AC.length;return AC[Math.abs(h)];}
-const SLA_CFG={ok:{label:"SLA OK",bg:"#d1fae5",color:"#065f46",border:"#6ee7b7"},warning:{label:"SLA Risco",bg:"#fef3c7",color:"#92400e",border:"#fcd34d"},breach:{label:"SLA Violado",bg:"#fee2e2",color:"#991b1b",border:"#fca5a5"}};
-const HUB_CFG={"BOTMAKER":{bg:"#ede9fe",color:"#5b21b6",border:"#c4b5fd"},"KAVAK CITY":{bg:"#dbeafe",color:"#1e40af",border:"#93c5fd"},"SP MARKET":{bg:"#dcfce7",color:"#14532d",border:"#86efac"},"SANTO ANDRÉ":{bg:"#fef3c7",color:"#78350f",border:"#fcd34d"}};
+function ac(n=""){let h=0;for(const c of n)h=(h*31+c.charCodeAt(0))%AC.length;return AC[Math.abs(h)];}
+const SLC={ok:{l:"SLA OK",bg:"#d1fae5",c:"#065f46",b:"#6ee7b7"},warning:{l:"SLA Risco",bg:"#fef3c7",c:"#92400e",b:"#fcd34d"},breach:{l:"SLA Violado",bg:"#fee2e2",c:"#991b1b",b:"#fca5a5"}};
+const HC={"BOTMAKER":{bg:"#ede9fe",c:"#5b21b6",b:"#c4b5fd"},"KAVAK CITY":{bg:"#dbeafe",c:"#1e40af",b:"#93c5fd"},"SP MARKET":{bg:"#dcfce7",c:"#14532d",b:"#86efac"},"SANTO ANDRÉ":{bg:"#fef3c7",c:"#78350f",b:"#fcd34d"}};
 
-async function fetchQueue(issueType) {
-  const jql = encodeURIComponent(`project=${PROJECT} AND issuetype=${issueType} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved","Resolvido") AND created >= "2026-01-22" ORDER BY created DESC`);
-  const fields = "summary,status,assignee,reporter,created,updated,customfield_10000";
-  const res = await fetch(`${PROXY_URL}?path=search/jql&jql=${jql}&maxResults=100&fields=${fields}`);
-  if (!res.ok) throw new Error(`HTTP ${res.status}`);
-  const data = await res.json();
-  if (data.errorMessages) throw new Error(data.errorMessages[0]);
-  return (data.issues||[]).map(i=>({
-    key:      i.key,
-    summary:  i.fields?.summary||"",
-    status:   i.fields?.status?.name||"",
-    assignee: i.fields?.assignee?.displayName||null,
-    reporter: i.fields?.reporter?.displayName||null,
-    created:  i.fields?.created,
-    updated:  i.fields?.updated,
-    hub:      i.fields?.customfield_10000||null,
-  }));
-}
+function App(){
+  const [search,setSearch]=useState("");
+  const [af,setAf]=useState("all");
+  const [hf,setHf]=useState("all");
+  const [sl,setSl]=useState(SH);
+  const [tab,setTab]=useState("sim");
+  const [sd,setSd]=useState(SIM);
+  const [cd,setCd]=useState(CON);
+  const [loading,setLoading]=useState(false);
+  const [last,setLast]=useState(null);
+  const [toasts,setToasts]=useState([]);
 
-async function transitionIssue(key, targetStatus) {
-  const tRes = await fetch(`${PROXY_URL}?path=issue/${key}/transitions`);
-  const tData = await tRes.json();
-  const tr = (tData.transitions||[]).find(t=>t.name.toLowerCase()===targetStatus.toLowerCase()||t.to?.name?.toLowerCase()===targetStatus.toLowerCase());
-  if (!tr) throw new Error(`Transição "${targetStatus}" não encontrada`);
-  const aRes = await fetch(`${PROXY_URL}?path=issue/${key}/transitions`,{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({transition:{id:tr.id}})});
-  if (!aRes.ok&&aRes.status!==204) throw new Error(`HTTP ${aRes.status}`);
-}
+  const toast=(msg,type="info")=>{const id=Date.now();setToasts(p=>[...p,{id,msg,type}]);setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),4000);};
 
-async function reassignIssue(key, assigneeName) {
-  const sRes = await fetch(`${PROXY_URL}?path=user/search&query=${encodeURIComponent(assigneeName)}`);
-  const sData = await sRes.json();
-  const user = Array.isArray(sData)?sData[0]:null;
-  if (!user?.accountId) throw new Error("Usuário não encontrado");
-  const aRes = await fetch(`${PROXY_URL}?path=issue/${key}`,{method:"PUT",headers:{"Content-Type":"application/json"},body:JSON.stringify({fields:{assignee:{accountId:user.accountId}}})});
-  if (!aRes.ok&&aRes.status!==204) throw new Error(`HTTP ${aRes.status}`);
-}
-
-function App() {
-  const [search, setSearch]     = useState("");
-  const [analistaF, setAnalista]= useState("all");
-  const [hubF, setHub]          = useState("all");
-  const [slaLimit, setSla]      = useState(SLA_H);
-  const [activeTab, setTab]     = useState("sim");
-  const [simLive, setSimLive]   = useState(null);
-  const [conLive, setConLive]   = useState(null);
-  const [loading, setLoading]   = useState(false);
-  const [lastFetch, setLastFetch] = useState(null);
-  const [statusOverrides, setStatusOverrides]     = useState({});
-  const [assigneeOverrides, setAssigneeOverrides] = useState({});
-  const [assigneeDropdown, setAssigneeDropdown]   = useState(null);
-  const [toasts, setToasts] = useState([]);
-  const dragKey  = useRef(null);
-  const dragSrc  = useRef(null);
-  const dragType = useRef(null);
-
-  const addToast = (msg, type="info") => {
-    const id = Date.now();
-    setToasts(p=>[...p,{id,msg,type}]);
-    setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),4000);
-  };
-
-  const fetchAll = async () => {
+  const fetchAll=async()=>{
     setLoading(true);
-    try {
-      const [s,c] = await Promise.all([fetchQueue(SIM_ISSUETYPE), fetchQueue(CON_ISSUETYPE)]);
-      setSimLive(s); setConLive(c);
-      setLastFetch(new Date());
-      addToast("✅ Dados atualizados do Jira","ok");
-    } catch(e) { addToast(`⚠️ Erro: ${e.message}`,"warn"); }
+    try{
+      const jql1=encodeURIComponent(`project=${PROJ} AND issuetype=${SIM_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "2026-01-22" ORDER BY created DESC`);
+      const jql2=encodeURIComponent(`project=${PROJ} AND issuetype=${CON_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "2026-01-22" ORDER BY created DESC`);
+      const fields="summary,status,assignee,reporter,created,updated,customfield_10000";
+      const [r1,r2]=await Promise.all([
+        fetch(`${PROXY}?path=search/jql&jql=${jql1}&maxResults=100&fields=${fields}`),
+        fetch(`${PROXY}?path=search/jql&jql=${jql2}&maxResults=100&fields=${fields}`)
+      ]);
+      const [d1,d2]=await Promise.all([r1.json(),r2.json()]);
+      const map=i=>({key:i.key,summary:i.fields?.summary||"",status:i.fields?.status?.name||"",assignee:i.fields?.assignee?.displayName||null,created:i.fields?.created,updated:i.fields?.updated,hub:i.fields?.customfield_10000||null});
+      const sim=(d1.issues||[]).map(map);
+      const con=(d2.issues||[]).map(i=>({...map(i),summary:pcs(i.fields?.summary||"")}));
+      if(sim.length){setSd(sim);setCd(con);setLast(new Date());toast("✅ Dados atualizados do Jira","ok");}
+      else throw new Error("sem dados");
+    }catch(e){toast("⚠️ Usando dados locais","warn");}
     setLoading(false);
   };
 
-  useEffect(()=>{ fetchAll(); },[]);
+  useEffect(()=>{fetchAll();const iv=setInterval(fetchAll,5*60*1000);return()=>clearInterval(iv);},[]);
 
-  const simBase = (simLive||[]).map(t=>({...t, assignee: assigneeOverrides[t.key]||t.assignee, status: statusOverrides[t.key]?(SIM_COLS.find(c=>c.id===statusOverrides[t.key])?.statuses[0]||t.status):t.status}));
-  const conBase = (conLive||[]).map(t=>({...t, assignee: assigneeOverrides[t.key]||t.assignee, status: statusOverrides[t.key]?(CON_COLS.find(c=>c.id===statusOverrides[t.key])?.statuses[0]||t.status):t.status}));
+  const anas=useMemo(()=>Array.from(new Set([...sd,...cd].map(t=>t.assignee).filter(Boolean))).sort(),[sd,cd]);
+  const hubs=useMemo(()=>Array.from(new Set(sd.map(t=>t.hub).filter(Boolean))).sort(),[sd]);
 
-  const allAnalistas = useMemo(()=>Array.from(new Set([...simBase,...conBase].map(t=>t.assignee).filter(Boolean))).sort(),[simBase,conBase]);
-  const hubs = useMemo(()=>Array.from(new Set(simBase.map(t=>t.hub).filter(Boolean))).sort(),[simBase]);
-
-  const filt = (arr,isS=true) => arr.filter(t=>{
-    if(analistaF!=="all"&&t.assignee!==analistaF) return false;
-    if(isS&&hubF!=="all"&&(t.hub||null)!==hubF) return false;
-    if(search){const q=search.toLowerCase();return[t.key,t.summary,t.assignee,t.reporter,t.hub].some(v=>(v||"").toLowerCase().includes(q));}
+  const filt=(arr,isS=true)=>arr.filter(t=>{
+    if(af!=="all"&&t.assignee!==af)return false;
+    if(isS&&hf!=="all"&&(t.hub||null)!==hf)return false;
+    if(search){const q=search.toLowerCase();return[t.key,t.summary,t.assignee,t.hub].some(v=>(v||"").toLowerCase().includes(q));}
     return true;
   });
 
-  const simFiltered = filt(simBase,true);
-  const conFiltered = filt(conBase,false);
-  const simGroups = SIM_COLS.map(col=>({col,items:simFiltered.filter(t=>colIdForStatus(t.status,SIM_COLS)===col.id)}));
-  const conGroups = CON_COLS.map(col=>({col,items:conFiltered.filter(t=>colIdForStatus(t.status,CON_COLS)===col.id)}));
+  const sf=filt(sd,true),cf=filt(cd,false);
+  const sg=SC.map(col=>({col,items:sf.filter(t=>cid(t.status,SC)===col.id)}));
+  const cg=CC.map(col=>({col,items:cf.filter(t=>cid(t.status,CC)===col.id)}));
+  const all=[...sd,...cd];
+  const breach=all.filter(t=>sla(t.created,sl)==="breach").length;
+  const risk=all.filter(t=>sla(t.created,sl)==="warning").length;
 
-  const allT = [...simBase,...conBase];
-  const breach = allT.filter(t=>getSla(t.created,slaLimit)==="breach").length;
-  const risk   = allT.filter(t=>getSla(t.created,slaLimit)==="warning").length;
-
-  const onDragStart = (e,key,colId,type)=>{dragKey.current=key;dragSrc.current=colId;dragType.current=type;e.dataTransfer.effectAllowed="move";};
-  const onDragOver  = (e)=>{e.preventDefault();e.dataTransfer.dropEffect="move";};
-  const onDrop = async(e,targetColId,type)=>{
-    e.preventDefault();
-    const key=dragKey.current,src=dragSrc.current;
-    if(!key||src===targetColId||dragType.current!==type) return;
-    setStatusOverrides(p=>({...p,[key]:targetColId}));
-    dragKey.current=null;
-    const tgt=type==="sim"?SIM_COL_TARGET[targetColId]:CON_COL_TARGET[targetColId];
-    if(tgt){try{await transitionIssue(key,tgt);addToast(`✅ ${key} → ${tgt}`,"ok");}catch(e){addToast(`❌ ${key}: ${e.message}`,"error");}}
-  };
-
-  const handleAssignee = async(key,name)=>{
-    setAssigneeOverrides(p=>({...p,[key]:name}));
-    setAssigneeDropdown(null);
-    try{await reassignIssue(key,name);addToast(`✅ ${key} → ${name}`,"ok");}
-    catch(e){addToast(`❌ Erro ao reatribuir: ${e.message}`,"error");}
-  };
-
-  const Card = ({t,colId,type,showHub=true})=>{
-    const sla=getSla(t.created,slaLimit),sc=SLA_CFG[sla],hrs=hrsAgo(t.created);
-    const hc=showHub&&t.hub?HUB_CFG[t.hub]:null;
-    const showDrop=assigneeDropdown===t.key;
-    const copyKey=(e)=>{e.stopPropagation();const el=e.currentTarget;try{const ta=document.createElement("textarea");ta.value=t.key;ta.style.cssText="position:fixed;opacity:0";document.body.appendChild(ta);ta.focus();ta.select();document.execCommand("copy");document.body.removeChild(ta);}catch(_){}el.textContent="✓";setTimeout(()=>el.textContent="⎘",1200);};
-    return (
-      <div draggable onDragStart={e=>onDragStart(e,t.key,colId,type)} onClick={()=>assigneeDropdown&&setAssigneeDropdown(null)}
-        style={{background:"#f8fafc",border:`1px solid ${sc.border}`,borderRadius:9,padding:"9px 11px",borderLeft:`4px solid ${sc.color}`,cursor:"grab",userSelect:"none",position:"relative",marginBottom:6}}>
+  const Card=({t,showHub=true})=>{
+    const s=sla(t.created,sl),sc=SLC[s],h=ha(t.created);
+    const hc=showHub&&t.hub?HC[t.hub]:null;
+    const cp=e=>{e.stopPropagation();const el=e.currentTarget;try{const ta=document.createElement("textarea");ta.value=t.key;ta.style.cssText="position:fixed;opacity:0";document.body.appendChild(ta);ta.focus();ta.select();document.execCommand("copy");document.body.removeChild(ta);}catch(_){}el.textContent="✓";setTimeout(()=>el.textContent="⎘",1200);};
+    return(
+      <div style={{background:"#f8fafc",border:`1px solid ${sc.b}`,borderRadius:9,padding:"9px 11px",borderLeft:`4px solid ${sc.c}`,marginBottom:6}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
           <div style={{display:"flex",alignItems:"center",gap:4}}>
-            <a href={`${JIRA_URL}/browse/${t.key}`} target="_blank" rel="noreferrer" style={{fontWeight:800,color:"#2563eb",fontSize:11,fontFamily:"monospace",textDecoration:"none"}}>{t.key} ↗</a>
-            <button onClick={copyKey} style={{background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:4,padding:"1px 5px",fontSize:10,cursor:"pointer",color:"#64748b",fontWeight:600}}>⎘</button>
+            <a href={`${JIRA}/browse/${t.key}`} target="_blank" style={{fontWeight:800,color:"#2563eb",fontSize:11,fontFamily:"monospace",textDecoration:"none"}}>{t.key} ↗</a>
+            <button onClick={cp} style={{background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:4,padding:"1px 5px",fontSize:10,cursor:"pointer",color:"#64748b",fontWeight:600}}>⎘</button>
           </div>
-          <span style={{background:sc.bg,color:sc.color,fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:20,border:`1px solid ${sc.border}`,whiteSpace:"nowrap"}}>{sc.label}{hrs!==null?` · ${hrs}h`:""}</span>
+          <span style={{background:sc.bg,color:sc.c,fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:20,border:`1px solid ${sc.b}`,whiteSpace:"nowrap"}}>{sc.l}{h!==null?` · ${h}h`:""}</span>
         </div>
         <div style={{fontSize:11,color:"#334155",marginBottom:4,lineHeight:1.4,fontWeight:500}}>{(t.summary||"").slice(0,100)}{(t.summary||"").length>100?"…":""}</div>
-        {hc&&<div style={{marginBottom:4}}><span style={{background:hc.bg,color:hc.color,border:`1px solid ${hc.border}`,fontSize:9,fontWeight:700,padding:"1px 7px",borderRadius:20}}>📍 {t.hub}</span></div>}
-        <div style={{position:"relative",marginBottom:3}}>
-          <div onClick={e=>{e.stopPropagation();setAssigneeDropdown(showDrop?null:t.key);}}
-            style={{display:"inline-flex",alignItems:"center",gap:4,cursor:"pointer",padding:"2px 5px",borderRadius:6,border:`1px solid ${showDrop?"#e2e8f0":"transparent"}`,background:showDrop?"#f1f5f9":"transparent",fontSize:9,color:"#64748b"}}>
-            <div style={{width:16,height:16,borderRadius:"50%",background:acolor(t.assignee||""),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:800,flexShrink:0}}>{initials(t.assignee||"")}</div>
-            <span>{t.assignee||"—"}</span>
-            <span style={{fontSize:8,opacity:.5}}>▾</span>
-          </div>
-          {showDrop&&(
-            <div onClick={e=>e.stopPropagation()} style={{position:"absolute",top:"100%",left:0,zIndex:999,background:"#fff",border:"1px solid #e2e8f0",borderRadius:8,boxShadow:"0 4px 16px rgba(0,0,0,.12)",minWidth:180,maxHeight:180,overflowY:"auto",padding:"4px 0"}}>
-              {allAnalistas.map(a=>(
-                <div key={a} onClick={()=>handleAssignee(t.key,a)}
-                  style={{padding:"6px 12px",fontSize:10,cursor:"pointer",display:"flex",alignItems:"center",gap:6,background:a===t.assignee?"#eff6ff":"transparent",fontWeight:a===t.assignee?700:400,color:"#334155"}}
-                  onMouseEnter={e=>e.currentTarget.style.background="#f8fafc"}
-                  onMouseLeave={e=>e.currentTarget.style.background=a===t.assignee?"#eff6ff":"transparent"}>
-                  <div style={{width:16,height:16,borderRadius:"50%",background:acolor(a),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:800}}>{initials(a)}</div>
-                  {a}{a===t.assignee?" ✓":""}
-                </div>
-              ))}
-            </div>
-          )}
+        {hc&&<div style={{marginBottom:4}}><span style={{background:hc.bg,color:hc.c,border:`1px solid ${hc.b}`,fontSize:9,fontWeight:700,padding:"1px 7px",borderRadius:20}}>📍 {t.hub}</span></div>}
+        <div style={{display:"flex",alignItems:"center",gap:4,fontSize:9,color:"#64748b",marginBottom:3}}>
+          <div style={{width:16,height:16,borderRadius:"50%",background:ac(t.assignee||""),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:800,flexShrink:0}}>{ini(t.assignee||"")}</div>
+          <span>{t.assignee||"—"}</span>
         </div>
         <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 6px"}}>
-          <div style={{fontSize:9,color:"#64748b"}}>🕐 {fmtDate(t.created)}</div>
-          <div style={{fontSize:9,color:"#94a3b8"}}>✏️ {fmtDate(t.updated)}</div>
+          <div style={{fontSize:9,color:"#64748b"}}>🕐 {fd(t.created)}</div>
+          <div style={{fontSize:9,color:"#94a3b8"}}>✏️ {fd(t.updated)}</div>
         </div>
       </div>
     );
   };
 
-  const Column = ({col,items,type,showHub=true})=>{
-    const [over,setOver]=useState(false);
-    return (
-      <div onDragOver={e=>{onDragOver(e);setOver(true);}} onDragLeave={()=>setOver(false)} onDrop={e=>{setOver(false);onDrop(e,col.id,type);}}
-        style={{background:over?"#f0f9ff":"#fff",borderRadius:10,border:`2px solid ${over?"#38bdf8":col.border}`,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,.05)",transition:"all .15s"}}>
-        <div style={{background:col.bg,padding:"8px 12px",borderBottom:`1px solid ${col.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <span style={{fontWeight:700,color:"#1e293b",fontSize:11}}>{col.icon} {col.label}</span>
-          <span style={{background:col.badge,color:"#fff",borderRadius:20,fontSize:10,fontWeight:700,padding:"2px 8px"}}>{items.length}</span>
-        </div>
-        <div style={{padding:8,maxHeight:520,overflowY:"auto"}}>
-          {items.length===0?<div style={{textAlign:"center",color:"#cbd5e1",fontSize:11,padding:"20px 0"}}>Nenhum ticket<br/><span style={{fontSize:9}}>Arraste cards aqui</span></div>
-          :items.map(t=><Card key={t.key} t={t} colId={col.id} type={type} showHub={showHub}/>)}
-        </div>
+  const Col=({col,items,showHub=true})=>(
+    <div style={{background:"#fff",borderRadius:10,border:`1px solid ${col.bd}`,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+      <div style={{background:col.bg,padding:"8px 12px",borderBottom:`1px solid ${col.bd}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span style={{fontWeight:700,color:"#1e293b",fontSize:11}}>{col.icon} {col.label}</span>
+        <span style={{background:col.bk,color:"#fff",borderRadius:20,fontSize:10,fontWeight:700,padding:"2px 8px"}}>{items.length}</span>
       </div>
-    );
-  };
+      <div style={{padding:8,maxHeight:520,overflowY:"auto"}}>
+        {items.length===0?<div style={{textAlign:"center",color:"#cbd5e1",fontSize:11,padding:"20px 0"}}>Nenhum ticket</div>:items.map(t=><Card key={t.key} t={t} showHub={showHub}/>)}
+      </div>
+    </div>
+  );
 
-  return (
-    <div style={{fontFamily:"'Inter',sans-serif",background:"#f1f5f9",minHeight:"100vh",padding:"14px 18px"}} onClick={()=>assigneeDropdown&&setAssigneeDropdown(null)}>
-      {/* Toasts */}
+  return(
+    <div style={{fontFamily:"Inter,sans-serif",background:"#f1f5f9",minHeight:"100vh",padding:"14px 18px"}}>
       <div style={{position:"fixed",top:16,right:16,zIndex:9999,display:"flex",flexDirection:"column",gap:6}}>
-        {toasts.map(t=>(
-          <div key={t.id} style={{padding:"8px 14px",borderRadius:8,fontSize:11,fontWeight:600,boxShadow:"0 4px 12px rgba(0,0,0,.15)",
-            background:t.type==="ok"?"#d1fae5":t.type==="error"?"#fee2e2":"#fef3c7",
-            color:t.type==="ok"?"#065f46":t.type==="error"?"#991b1b":"#92400e",
-            border:`1px solid ${t.type==="ok"?"#6ee7b7":t.type==="error"?"#fca5a5":"#fcd34d"}`}}>{t.msg}</div>
-        ))}
+        {toasts.map(t=><div key={t.id} style={{padding:"8px 14px",borderRadius:8,fontSize:11,fontWeight:600,boxShadow:"0 4px 12px rgba(0,0,0,.15)",background:t.type==="ok"?"#d1fae5":"#fef3c7",color:t.type==="ok"?"#065f46":"#92400e",border:`1px solid ${t.type==="ok"?"#6ee7b7":"#fcd34d"}`}}>{t.msg}</div>)}
       </div>
 
-      {/* Header */}
       <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
         <div>
           <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
             <span style={{fontSize:17,fontWeight:800,color:"#0f172a"}}>🏦 Financing Ops Pipeline</span>
-            <a href={`${JIRA_URL}/jira/servicedesk/projects/BSO/queues/custom/7342`} target="_blank" rel="noreferrer" style={{fontSize:9,background:"#dbeafe",color:"#1e40af",padding:"2px 8px",borderRadius:20,fontWeight:700,textDecoration:"none"}}>Simulação #7342 ↗</a>
-            <a href={`${JIRA_URL}/jira/servicedesk/projects/BSO/queues/custom/8400`} target="_blank" rel="noreferrer" style={{fontSize:9,background:"#fce7f3",color:"#be185d",padding:"2px 8px",borderRadius:20,fontWeight:700,textDecoration:"none"}}>Contratos #8400 ↗</a>
+            <a href={`${JIRA}/jira/servicedesk/projects/BSO/queues/custom/7342`} target="_blank" style={{fontSize:9,background:"#dbeafe",color:"#1e40af",padding:"2px 8px",borderRadius:20,fontWeight:700,textDecoration:"none"}}>Simulação #7342 ↗</a>
+            <a href={`${JIRA}/jira/servicedesk/projects/BSO/queues/custom/8400`} target="_blank" style={{fontSize:9,background:"#fce7f3",color:"#be185d",padding:"2px 8px",borderRadius:20,fontWeight:700,textDecoration:"none"}}>Contratos #8400 ↗</a>
           </div>
-          <div style={{fontSize:9,color:"#94a3b8",marginTop:2}}>{lastFetch?`Atualizado às ${lastFetch.toLocaleTimeString("pt-BR")}`:"Carregando..."}</div>
+          <div style={{fontSize:9,color:"#94a3b8",marginTop:2}}>{last?`✅ Jira · ${last.toLocaleTimeString("pt-BR")} · auto-refresh 5min`:"📦 Dados locais — buscando Jira..."}</div>
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center",flexWrap:"wrap"}}>
-          <button onClick={fetchAll} disabled={loading} style={{padding:"5px 12px",borderRadius:7,border:"1px solid #bbf7d0",background:loading?"#f1f5f9":"#f0fdf4",color:loading?"#94a3b8":"#16a34a",fontSize:10,fontWeight:700,cursor:loading?"not-allowed":"pointer"}}>
-            {loading?"⏳ Buscando...":"🔄 Atualizar"}
-          </button>
-          <label style={{fontSize:11,color:"#64748b",display:"flex",alignItems:"center",gap:5}}>
-            SLA (h): <input type="number" value={slaLimit} min={1} max={168} onChange={e=>setSla(Number(e.target.value))} style={{width:44,padding:"3px 5px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:11}}/>
-          </label>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <button onClick={fetchAll} disabled={loading} style={{padding:"5px 12px",borderRadius:7,border:"1px solid #bbf7d0",background:loading?"#f1f5f9":"#f0fdf4",color:loading?"#94a3b8":"#16a34a",fontSize:10,fontWeight:700,cursor:loading?"not-allowed":"pointer"}}>{loading?"⏳ Buscando...":"🔄 Atualizar"}</button>
+          <label style={{fontSize:11,color:"#64748b",display:"flex",alignItems:"center",gap:5}}>SLA (h):<input type="number" value={sl} min={1} max={168} onChange={e=>setSl(Number(e.target.value))} style={{width:44,padding:"3px 5px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:11}}/></label>
         </div>
       </div>
 
-      {/* Metrics */}
       <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:7,marginBottom:10}}>
-        {[
-          {label:"Simulação",   value:simBase.length,  icon:"📊",bg:"#eff6ff",color:"#1d4ed8"},
-          {label:"Contratos",   value:conBase.length,  icon:"📋",bg:"#fdf2f8",color:"#be185d"},
-          {label:"Ag. Cliente", value:conGroups.find(g=>g.col.id==="aguardando")?.items.length||0, icon:"⏳",bg:"#fefce8",color:"#854d0e"},
-          {label:"Contrato ✅", value:conGroups.find(g=>g.col.id==="contrato_ass")?.items.length||0, icon:"✅",bg:"#f0fdf4",color:"#15803d"},
-          {label:"SLA Risco",   value:risk,   icon:"🟡",bg:"#fefce8",color:"#854d0e"},
-          {label:"SLA Violado", value:breach, icon:"🔴",bg:"#fff1f2",color:"#9f1239"},
-        ].map(m=>(
-          <div key={m.label} style={{background:m.bg,borderRadius:9,padding:"9px 11px",border:"1px solid #e2e8f0"}}>
-            <div style={{fontSize:14}}>{m.icon}</div>
-            <div style={{fontSize:20,fontWeight:800,color:m.color,lineHeight:1.1,marginTop:1}}>{m.value}</div>
-            <div style={{fontSize:9,color:"#64748b",marginTop:1,fontWeight:500}}>{m.label}</div>
+        {[{l:"Simulação",v:sd.length,i:"📊",bg:"#eff6ff",c:"#1d4ed8"},{l:"Contratos",v:cd.length,i:"📋",bg:"#fdf2f8",c:"#be185d"},{l:"Ag. Cliente",v:cg.find(g=>g.col.id==="aguardando")?.items.length||0,i:"⏳",bg:"#fefce8",c:"#854d0e"},{l:"Contrato ✅",v:cg.find(g=>g.col.id==="contrato_ass")?.items.length||0,i:"✅",bg:"#f0fdf4",c:"#15803d"},{l:"SLA Risco",v:risk,i:"🟡",bg:"#fefce8",c:"#854d0e"},{l:"SLA Violado",v:breach,i:"🔴",bg:"#fff1f2",c:"#9f1239"}].map(m=>(
+          <div key={m.l} style={{background:m.bg,borderRadius:9,padding:"9px 11px",border:"1px solid #e2e8f0"}}>
+            <div style={{fontSize:14}}>{m.i}</div>
+            <div style={{fontSize:20,fontWeight:800,color:m.c,lineHeight:1.1,marginTop:1}}>{m.v}</div>
+            <div style={{fontSize:9,color:"#64748b",marginTop:1,fontWeight:500}}>{m.l}</div>
           </div>
         ))}
       </div>
 
-      {/* Hub filter */}
       {hubs.length>0&&<div style={{background:"#fff",borderRadius:9,padding:"8px 12px",marginBottom:10,border:"1px solid #e2e8f0",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
         <span style={{fontSize:10,fontWeight:700,color:"#475569"}}>📍 Hub</span>
-        {hubs.map(h=>{const c=HUB_CFG[h]||{bg:"#f1f5f9",color:"#475569",border:"#e2e8f0"};return(
-          <button key={h} onClick={()=>setHub(hubF===h?"all":h)} style={{padding:"2px 9px",borderRadius:20,border:`1px solid ${c.border}`,background:hubF===h?c.color:c.bg,color:hubF===h?"#fff":c.color,fontSize:10,fontWeight:700,cursor:"pointer"}}>
-            {h} <span style={{opacity:.7}}>({simBase.filter(t=>t.hub===h).length})</span>
-          </button>
-        );})}
+        {hubs.map(h=>{const c=HC[h]||{bg:"#f1f5f9",c:"#475569",b:"#e2e8f0"};return<button key={h} onClick={()=>setHf(hf===h?"all":h)} style={{padding:"2px 9px",borderRadius:20,border:`1px solid ${c.b}`,background:hf===h?c.c:c.bg,color:hf===h?"#fff":c.c,fontSize:10,fontWeight:700,cursor:"pointer"}}>{h} <span style={{opacity:.7}}>({sd.filter(t=>t.hub===h).length})</span></button>;})}
       </div>}
 
-      {/* Filters */}
       <div style={{background:"#fff",borderRadius:9,padding:"9px 12px",marginBottom:12,border:"1px solid #e2e8f0",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
-        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Chave, resumo, cliente, responsável..."
-          style={{flex:1,minWidth:150,padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:11,background:"#f8fafc"}}/>
-        <select value={analistaF} onChange={e=>setAnalista(e.target.value)} style={{padding:"6px 9px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:11,background:"#f8fafc",color:"#334155",cursor:"pointer",minWidth:160}}>
-          {["all",...allAnalistas].map(a=>(<option key={a} value={a}>{a==="all"?"👤 Todos os analistas":a}</option>))}
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Chave, resumo, cliente, responsável..." style={{flex:1,minWidth:150,padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:11,background:"#f8fafc"}}/>
+        <select value={af} onChange={e=>setAf(e.target.value)} style={{padding:"6px 9px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:11,background:"#f8fafc",color:"#334155",cursor:"pointer",minWidth:160}}>
+          {["all",...anas].map(a=><option key={a} value={a}>{a==="all"?"👤 Todos os analistas":a}</option>)}
         </select>
-        {(analistaF!=="all"||hubF!=="all"||search)&&(
-          <button onClick={()=>{setAnalista("all");setHub("all");setSearch("");}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #fca5a5",background:"#fff1f2",color:"#991b1b",fontSize:10,fontWeight:600,cursor:"pointer"}}>✕ Limpar</button>
-        )}
-        <span style={{fontSize:9,color:"#94a3b8"}}>{simFiltered.length+conFiltered.length} tickets</span>
+        {(af!=="all"||hf!=="all"||search)&&<button onClick={()=>{setAf("all");setHf("all");setSearch("");}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #fca5a5",background:"#fff1f2",color:"#991b1b",fontSize:10,fontWeight:600,cursor:"pointer"}}>✕ Limpar</button>}
+        <span style={{fontSize:9,color:"#94a3b8"}}>{sf.length+cf.length} tickets</span>
       </div>
 
-      {/* Tabs */}
-      <div style={{display:"flex",gap:6,marginBottom:8}}>
+      <div style={{display:"flex",gap:6,marginBottom:12}}>
         {[["sim","📊 Simulação"],["contract","📋 Contratos"],["all","⊞ Visão Completa"]].map(([id,label])=>(
-          <button key={id} onClick={()=>setTab(id)} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #e2e8f0",background:activeTab===id?"#0f172a":"#fff",color:activeTab===id?"#fff":"#475569",fontWeight:600,fontSize:11,cursor:"pointer"}}>{label}</button>
+          <button key={id} onClick={()=>setTab(id)} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #e2e8f0",background:tab===id?"#0f172a":"#fff",color:tab===id?"#fff":"#475569",fontWeight:600,fontSize:11,cursor:"pointer"}}>{label}</button>
         ))}
       </div>
-      <div style={{fontSize:9,color:"#94a3b8",marginBottom:10}}>↔️ Arraste cards entre colunas · Clique no analista para reatribuir</div>
 
-      {(activeTab==="sim"||activeTab==="all")&&(
-        <div style={{marginBottom:activeTab==="all"?20:0}}>
-          {activeTab==="all"&&<div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>📊 SIMULAÇÃO — Fila #7342</div>}
+      {(tab==="sim"||tab==="all")&&(
+        <div style={{marginBottom:tab==="all"?20:0}}>
+          {tab==="all"&&<div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>📊 SIMULAÇÃO — Fila #7342</div>}
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
-            {simGroups.map(({col,items})=><Column key={col.id} col={col} items={items} type="sim" showHub={true}/>)}
+            {sg.map(({col,items})=><Col key={col.id} col={col} items={items} showHub={true}/>)}
           </div>
         </div>
       )}
-
-      {(activeTab==="contract"||activeTab==="all")&&(
+      {(tab==="contract"||tab==="all")&&(
         <div>
-          {activeTab==="all"&&<div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>📋 CONTRATOS — Fila #8400</div>}
+          {tab==="all"&&<div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>📋 CONTRATOS — Fila #8400</div>}
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-            {conGroups.map(({col,items})=><Column key={col.id} col={col} items={items} type="con" showHub={false}/>)}
+            {cg.map(({col,items})=><Col key={col.id} col={col} items={items} showHub={false}/>)}
           </div>
         </div>
       )}
     </div>
   );
 }
-
-ReactDOM.render(<App/>, document.getElementById("root"));
+ReactDOM.render(React.createElement(App),document.getElementById("root"));
 </script>
 </body>
 </html>
