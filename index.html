@@ -81,23 +81,25 @@ function App(){
   const toast=(msg,type="info")=>{const id=Date.now();setToasts(p=>[...p,{id,msg,type}]);setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),4000);};
 
   const fetchAll=async()=>{
+    if(!JIRA_TOKEN){toast("⚠️ Configure o token Jira no código","warn");setLoading(false);return;}
     setLoading(true);
     try{
-      const p=(url)=>`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
+      const auth="Basic "+btoa(`${JIRA_EMAIL}:${JIRA_TOKEN}`);
       const jql1=encodeURIComponent(`project=${PROJ} AND issuetype=${SIM_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "2026-01-22" ORDER BY created DESC`);
       const jql2=encodeURIComponent(`project=${PROJ} AND issuetype=${CON_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "2026-01-22" ORDER BY created DESC`);
       const fields="summary,status,assignee,reporter,created,updated,customfield_10000";
-      const u1=`${PROXY}?path=search/jql&jql=${jql1}&maxResults=100&fields=${fields}`;
-      const u2=`${PROXY}?path=search/jql&jql=${jql2}&maxResults=100&fields=${fields}`;
-      const [r1,r2]=await Promise.all([fetch(p(u1)),fetch(p(u2))]);
-      const [w1,w2]=await Promise.all([r1.json(),r2.json()]);
-      const d1=JSON.parse(w1.contents),d2=JSON.parse(w2.contents);
+      const base=`${JIRA}/rest/api/3/search/jql`;
+      const [r1,r2]=await Promise.all([
+        fetch(`${base}?jql=${jql1}&maxResults=100&fields=${fields}`,{headers:{Authorization:auth,Accept:"application/json"}}),
+        fetch(`${base}?jql=${jql2}&maxResults=100&fields=${fields}`,{headers:{Authorization:auth,Accept:"application/json"}})
+      ]);
+      const [d1,d2]=await Promise.all([r1.json(),r2.json()]);
       const map=i=>({key:i.key,summary:i.fields?.summary||"",status:i.fields?.status?.name||"",assignee:i.fields?.assignee?.displayName||null,created:i.fields?.created,updated:i.fields?.updated,hub:i.fields?.customfield_10000||null});
       const sim=(d1.issues||[]).map(map);
       const con=(d2.issues||[]).map(i=>({...map(i),summary:pcs(i.fields?.summary||"")}));
       if(sim.length){setSd(sim);setCd(con);setLast(new Date());toast("✅ Dados atualizados do Jira","ok");}
       else throw new Error("sem dados");
-    }catch(e){toast("⚠️ Usando dados locais","warn");}
+    }catch(e){toast("⚠️ Usando dados locais: "+e.message,"warn");}
     setLoading(false);
   };
 
