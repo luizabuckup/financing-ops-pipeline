@@ -83,14 +83,15 @@ function App(){
   const fetchAll=async()=>{
     setLoading(true);
     try{
+      const p=(url)=>`https://api.allorigins.win/get?url=${encodeURIComponent(url)}`;
       const jql1=encodeURIComponent(`project=${PROJ} AND issuetype=${SIM_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "2026-01-22" ORDER BY created DESC`);
       const jql2=encodeURIComponent(`project=${PROJ} AND issuetype=${CON_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "2026-01-22" ORDER BY created DESC`);
       const fields="summary,status,assignee,reporter,created,updated,customfield_10000";
-      const [r1,r2]=await Promise.all([
-        fetch(`${PROXY}?path=search/jql&jql=${jql1}&maxResults=100&fields=${fields}`),
-        fetch(`${PROXY}?path=search/jql&jql=${jql2}&maxResults=100&fields=${fields}`)
-      ]);
-      const [d1,d2]=await Promise.all([r1.json(),r2.json()]);
+      const u1=`${PROXY}?path=search/jql&jql=${jql1}&maxResults=100&fields=${fields}`;
+      const u2=`${PROXY}?path=search/jql&jql=${jql2}&maxResults=100&fields=${fields}`;
+      const [r1,r2]=await Promise.all([fetch(p(u1)),fetch(p(u2))]);
+      const [w1,w2]=await Promise.all([r1.json(),r2.json()]);
+      const d1=JSON.parse(w1.contents),d2=JSON.parse(w2.contents);
       const map=i=>({key:i.key,summary:i.fields?.summary||"",status:i.fields?.status?.name||"",assignee:i.fields?.assignee?.displayName||null,created:i.fields?.created,updated:i.fields?.updated,hub:i.fields?.customfield_10000||null});
       const sim=(d1.issues||[]).map(map);
       const con=(d2.issues||[]).map(i=>({...map(i),summary:pcs(i.fields?.summary||"")}));
