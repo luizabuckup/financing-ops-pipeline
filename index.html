@@ -81,12 +81,15 @@ function App(){
   const toast=(msg,type="info")=>{const id=Date.now();setToasts(p=>[...p,{id,msg,type}]);setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),4000);};
 
   const fetchAll=async()=>{
-    if(!JIRA_TOKEN){toast("⚠️ Configure o token Jira no código","warn");setLoading(false);return;}
     setLoading(true);
+    const JIRA_EMAIL="luiza.buckup@kavak.com";
+    const JIRA_TOKEN="ATATT3xFfGF0Iz8eGmdBpHQ0zPQzGzQ2BCP0H9D94I6uO7S367w9gRa7VUW7H-kzZjqsgD8MgKT2ndtA_5oTKgmOrVr1YXNN6LXJYGGFt_UYCrgpHcCHsNEP9ocT91ro-pe2mkMarpgZDrh5BNCyy6QOCkE_umcQX4mYYmQjQSxG722F9AmNhQA=B60BBCBE";
     try{
       const auth="Basic "+btoa(`${JIRA_EMAIL}:${JIRA_TOKEN}`);
-      const jql1=encodeURIComponent(`project=${PROJ} AND issuetype=${SIM_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "2026-01-22" ORDER BY created DESC`);
-      const jql2=encodeURIComponent(`project=${PROJ} AND issuetype=${CON_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "2026-01-22" ORDER BY created DESC`);
+      const today=new Date();today.setDate(today.getDate()-30);
+      const cutoff=today.toISOString().split("T")[0];
+      const jql1=encodeURIComponent(`project=${PROJ} AND issuetype=${SIM_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "${cutoff}" ORDER BY created DESC`);
+      const jql2=encodeURIComponent(`project=${PROJ} AND issuetype=${CON_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "${cutoff}" ORDER BY created DESC`);
       const fields="summary,status,assignee,reporter,created,updated,customfield_10000";
       const base=`${JIRA}/rest/api/3/search/jql`;
       const [r1,r2]=await Promise.all([
@@ -97,7 +100,7 @@ function App(){
       const map=i=>({key:i.key,summary:i.fields?.summary||"",status:i.fields?.status?.name||"",assignee:i.fields?.assignee?.displayName||null,created:i.fields?.created,updated:i.fields?.updated,hub:i.fields?.customfield_10000||null});
       const sim=(d1.issues||[]).map(map);
       const con=(d2.issues||[]).map(i=>({...map(i),summary:pcs(i.fields?.summary||"")}));
-      if(sim.length){setSd(sim);setCd(con);setLast(new Date());toast("✅ Dados atualizados do Jira","ok");}
+      if(sim.length||con.length){setSd(sim);setCd(con);setLast(new Date());toast("✅ Dados atualizados do Jira","ok");}
       else throw new Error("sem dados");
     }catch(e){toast("⚠️ Usando dados locais: "+e.message,"warn");}
     setLoading(false);
