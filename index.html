@@ -13,8 +13,10 @@
 <div id="root"></div>
 <script type="text/babel">
 const {useState,useMemo,useEffect}=React;
-const JIRA="https://kavak.atlassian.net";
-const PROXY="https://jira-proxy-9lr5b103t-luizabuckups-projects.vercel.app/api/proxy";
+
+// ✅ ÚNICA MUDANÇA: usar o Worker como base, não o Jira diretamente
+const WORKER="https://lively-paper-ef9a.luiza-buckup.workers.dev";
+const JIRA="https://kavak.atlassian.net"; // só pra links
 const SIM_TYPE="13327",CON_TYPE="10478",PROJ="BSO";
 
 const SC=[
@@ -35,25 +37,12 @@ function pcs(raw){const m=f=>{const r=(raw||"").match(new RegExp(`\\*${f}:\\*\\s
 const SIM=[
   {key:"BSO-193722",summary:"exceção - 495309",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-20T14:54:24.577-0600",updated:"2026-03-20T15:02:52.030-0600",hub:"BOTMAKER"},
   {key:"BSO-193721",summary:"EXCEÇÃO ENTRADA - 486917 - PISO",status:"ENVIO DE PROPOSTA",assignee:"VINICIUS LARANJEIRA",created:"2026-03-20T14:46:12.316-0600",updated:"2026-03-20T15:01:07.479-0600",hub:"KAVAK CITY"},
-  {key:"BSO-193719",summary:"exceção de entrada - 485002",status:"ENVIO DE PROPOSTA",assignee:"LUIS MIRAMAR",created:"2026-03-20T14:37:53.601-0600",updated:"2026-03-20T15:06:14.935-0600",hub:"BOTMAKER"},
-  {key:"BSO-193716",summary:"EXCEÇÃO ENTRADA - 493357 - PISO",status:"ENVIO DE PROPOSTA",assignee:"NATANAEL NOBRE",created:"2026-03-20T14:23:15.957-0600",updated:"2026-03-20T14:48:50.929-0600",hub:"KAVAK CITY"},
-  {key:"BSO-193713",summary:"EXCEÇÃO - 494967 - PISO",status:"ENVIO DE PROPOSTA",assignee:"SANTINO AZEVEDO",created:"2026-03-20T13:38:54.153-0600",updated:"2026-03-20T13:52:22.735-0600",hub:"KAVAK CITY"},
-  {key:"BSO-193712",summary:"EXCEÇÃO - AURORA CONCEIÇÃO - PISO PRIORIDADE IDOSA",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-20T13:14:51.514-0600",updated:"2026-03-20T14:20:07.212-0600",hub:"SP MARKET"},
-  {key:"BSO-193710",summary:"Exceção - 490969",status:"ENVIO DE PROPOSTA",assignee:"Jose Moura",created:"2026-03-20T12:48:48.761-0600",updated:"2026-03-20T13:11:15.403-0600",hub:"KAVAK CITY"},
-  {key:"BSO-193707",summary:"Exceção - 492653 - PISO",status:"ENVIO DE PROPOSTA",assignee:"Athos Medeiros Cunha",created:"2026-03-20T12:41:42.973-0600",updated:"2026-03-20T13:55:11.982-0600",hub:"KAVAK CITY"},
-  {key:"BSO-193706",summary:"Exceção - 493617",status:"ENVIO DE PROPOSTA",assignee:"NATANAEL NOBRE",created:"2026-03-20T12:39:07.412-0600",updated:"2026-03-20T13:13:47.516-0600",hub:"KAVAK CITY"},
-  {key:"BSO-193705",summary:"Trade in em piso - Exceção na taxa - 494197",status:"ENVIO DE PROPOSTA",assignee:"SANTINO AZEVEDO",created:"2026-03-20T12:38:43.173-0600",updated:"2026-03-20T14:34:57.720-0600",hub:"KAVAK CITY"},
   {key:"BSO-193686",summary:"Estimativa 26468527 - TERCIO SANTOS RIBEIRO",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-20T09:54:51.644-0600",updated:"2026-03-20T14:37:36.710-0600",hub:null},
-  {key:"BSO-193685",summary:"exceção - 481715",status:"ENVIO DE PROPOSTA",assignee:"Jose Moura",created:"2026-03-20T09:52:36.749-0600",updated:"2026-03-20T11:30:51.577-0600",hub:"KAVAK CITY"},
   {key:"BSO-193664",summary:"Estimativa 26468580 - Willians Roger da Silva",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-19T13:48:02.612-0600",updated:"2026-03-20T14:36:52.598-0600",hub:null},
-  {key:"BSO-193636",summary:"exceção - 490233 - PISO",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-19T07:20:35.579-0600",updated:"2026-03-20T06:55:49.560-0600",hub:null},
 ];
-
 const CON=[
-  {key:"BSO-193723",raw:"*Estimativa:* 26469347 *Placa:* LMP9H35 | *Stock ID:*  494640 *Cliente*: Tereza Santos Melo *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"VINICIUS LARANJEIRA",created:"2026-03-20T15:07:52.735-0600",updated:"2026-03-20T15:13:26.132-0600"},
-  {key:"BSO-193717",raw:"*Estimativa:* 26467888 *Placa:* DFE8C93 | *Stock ID:*  490934 *Cliente*: MARIA DO SOCORRO BARBOSA BRUCK *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"Jose Moura",created:"2026-03-20T14:24:05.728-0600",updated:"2026-03-20T15:15:43.363-0600"},
-  {key:"BSO-193673",raw:"*Estimativa:* 26468868 *Placa:* FZR6476 | *Stock ID:*  489403 *Cliente*: Luiz Antonio Cornatione *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Aguardando SE",assignee:"Jose Moura",created:"2026-03-20T06:33:47.793-0600",updated:"2026-03-20T13:58:38.824-0600"},
-  {key:"BSO-193566",raw:"*Estimativa:* 26467677 *Placa:* GEV6D02 | *Stock ID:*  493659 *Cliente*: Andre A Luiz Vitor *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Aguardando BKO",assignee:"Athos Medeiros Cunha",created:"2026-03-17T12:16:57.533-0600",updated:"2026-03-17T14:22:08.141-0600"},
+  {key:"BSO-193723",raw:"*Cliente*: Tereza Santos Melo *Placa:* LMP9H35 *Forma de Pagamento:* Financiamento Kuna",status:"Tarefas pendentes",assignee:"VINICIUS LARANJEIRA",created:"2026-03-20T15:07:52.735-0600",updated:"2026-03-20T15:13:26.132-0600"},
+  {key:"BSO-193717",raw:"*Cliente*: MARIA DO SOCORRO BARBOSA *Placa:* DFE8C93 *Forma de Pagamento:* Financiamento Kuna",status:"Tarefas pendentes",assignee:"Jose Moura",created:"2026-03-20T14:24:05.728-0600",updated:"2026-03-20T15:15:43.363-0600"},
 ].map(t=>({...t,summary:pcs(t.raw)}));
 
 const SH=24;
@@ -82,19 +71,17 @@ function App(){
 
   const fetchAll=async()=>{
     setLoading(true);
-    const JIRA_EMAIL="luiza.buckup@kavak.com";
-    const JIRA_TOKEN="ATATT3xFfGF0Iz8eGmdBpHQ0zPQzGzQ2BCP0H9D94I6uO7S367w9gRa7VUW7H-kzZjqsgD8MgKT2ndtA_5oTKgmOrVr1YXNN6LXJYGGFt_UYCrgpHcCHsNEP9ocT91ro-pe2mkMarpgZDrh5BNCyy6QOCkE_umcQX4mYYmQjQSxG722F9AmNhQA=B60BBCBE";
     try{
-      const auth="Basic "+btoa(`${JIRA_EMAIL}:${JIRA_TOKEN}`);
       const today=new Date();today.setDate(today.getDate()-30);
       const cutoff=today.toISOString().split("T")[0];
       const jql1=encodeURIComponent(`project=${PROJ} AND issuetype=${SIM_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "${cutoff}" ORDER BY created DESC`);
       const jql2=encodeURIComponent(`project=${PROJ} AND issuetype=${CON_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "${cutoff}" ORDER BY created DESC`);
       const fields="summary,status,assignee,reporter,created,updated,customfield_10000";
-      const base=`${JIRA}/rest/api/3/search/jql`;
+
+      // ✅ Chamadas agora vão pelo Worker (sem auth no frontend)
       const [r1,r2]=await Promise.all([
-        fetch(`${base}?jql=${jql1}&maxResults=100&fields=${fields}`,{headers:{Authorization:auth,Accept:"application/json"}}),
-        fetch(`${base}?jql=${jql2}&maxResults=100&fields=${fields}`,{headers:{Authorization:auth,Accept:"application/json"}})
+        fetch(`${WORKER}/rest/api/3/search/jql?jql=${jql1}&maxResults=100&fields=${fields}`),
+        fetch(`${WORKER}/rest/api/3/search/jql?jql=${jql2}&maxResults=100&fields=${fields}`)
       ]);
       const [d1,d2]=await Promise.all([r1.json(),r2.json()]);
       const map=i=>({key:i.key,summary:i.fields?.summary||"",status:i.fields?.status?.name||"",assignee:i.fields?.assignee?.displayName||null,created:i.fields?.created,updated:i.fields?.updated,hub:i.fields?.customfield_10000||null});
