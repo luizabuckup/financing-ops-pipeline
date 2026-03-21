@@ -1,0 +1,340 @@
+import { useState, useMemo, useEffect } from "react";
+
+const JIRA_URL = "https://kavak.atlassian.net";
+const DATA_URL = "https://jira-proxy-9lr5b103t-luizabuckups-projects.vercel.app/api/data";
+const AUTO_REFRESH_MIN = 5;
+
+const SIM_COLS = [
+  { id:"em_andamento",   label:"Em Andamento",       icon:"🔄", bg:"#f0fdf4", border:"#bbf7d0", badge:"#16a34a", statuses:["em andamento","tarefas pendentes"] },
+  { id:"envio_proposta", label:"Envio de Proposta",  icon:"📤", bg:"#fefce8", border:"#fde68a", badge:"#d97706", statuses:["envio de proposta"] },
+  { id:"analise_docs",   label:"Análise de Docs",    icon:"🔍", bg:"#eff6ff", border:"#bfdbfe", badge:"#2563eb", statuses:["análise documentos","analise documentos"] },
+  { id:"ag_cliente",     label:"Aguardando Cliente", icon:"👤", bg:"#fdf2f8", border:"#f9a8d4", badge:"#be185d", statuses:["pending documentation","waiting for se","aguardando cliente"] },
+];
+
+const CON_COLS = [
+  { id:"em_andamento", label:"Em Andamento",       icon:"🔄", bg:"#f0fdf4", border:"#bbf7d0", badge:"#16a34a", statuses:["em andamento","tarefas pendentes"] },
+  { id:"contrato_ass", label:"Contrato Assinado",  icon:"✅", bg:"#dcfce7", border:"#86efac", badge:"#15803d", statuses:["contract signed","contrato assinado"] },
+  { id:"aguardando",   label:"Aguardando Cliente", icon:"⏳", bg:"#fef3c7", border:"#fcd34d", badge:"#d97706", statuses:["aguardando se","aguardando finops","awaiting financial (fiscal)","aguardando financial","aguardando bko","aguardando entrega","se replied"] },
+];
+
+const IGNORED = ["cancelado","cancelada","concluído","concluido","done","closed","resolvido","resolved","fechada"];
+
+function colId(status, cols) {
+  const s = (status||"").trim().toLowerCase();
+  if (IGNORED.includes(s)) return null;
+  for (const col of cols) { if (col.statuses.includes(s)) return col.id; }
+  return cols[0].id;
+}
+
+function parseConSummary(raw) {
+  const m = f => { const r=(raw||"").match(new RegExp(`\\*${f}:\\*\\s*([^\\*•\\|]+)`)); return r?r[1].trim().replace(/<[^>]+>/g,"").trim():null; };
+  const cliente=m("Cliente"), placa=m("Placa"), pgto=m("Forma de Pagamento");
+  if(cliente) return `${cliente}${placa?` · ${placa}`:""}${pgto?` · ${pgto}`:""}`;
+  return (raw||"").replace(/<[^>]+>/g,"").slice(0,120);
+}
+
+const SIM_RAW = [
+  {key:"BSO-193722",summary:"exceção - 495309",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-20T14:54:24.577-0600",updated:"2026-03-20T15:02:52.030-0600",hub:"BOTMAKER"},
+  {key:"BSO-193721",summary:"EXCEÇÃO ENTRADA - 486917 - PISO",status:"ENVIO DE PROPOSTA",assignee:"VINICIUS LARANJEIRA",created:"2026-03-20T14:46:12.316-0600",updated:"2026-03-20T15:01:07.479-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193719",summary:"exceção de entrada - 485002",status:"ENVIO DE PROPOSTA",assignee:"LUIS MIRAMAR",created:"2026-03-20T14:37:53.601-0600",updated:"2026-03-20T15:06:14.935-0600",hub:"BOTMAKER"},
+  {key:"BSO-193716",summary:"EXCEÇÃO ENTRADA - 493357 - PISO",status:"ENVIO DE PROPOSTA",assignee:"NATANAEL NOBRE",created:"2026-03-20T14:23:15.957-0600",updated:"2026-03-20T14:48:50.929-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193713",summary:"EXCEÇÃO - 494967 - PISO",status:"ENVIO DE PROPOSTA",assignee:"SANTINO AZEVEDO",created:"2026-03-20T13:38:54.153-0600",updated:"2026-03-20T13:52:22.735-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193712",summary:"EXCEÇÃO - AURORA CONCEIÇÃO - PISO PRIORIDADE IDOSA",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-20T13:14:51.514-0600",updated:"2026-03-20T14:20:07.212-0600",hub:"SP MARKET"},
+  {key:"BSO-193710",summary:"Exceção - 490969",status:"ENVIO DE PROPOSTA",assignee:"Jose Moura",created:"2026-03-20T12:48:48.761-0600",updated:"2026-03-20T13:11:15.403-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193707",summary:"Exceção - 492653 - PISO",status:"ENVIO DE PROPOSTA",assignee:"Athos Medeiros Cunha",created:"2026-03-20T12:41:42.973-0600",updated:"2026-03-20T13:55:11.982-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193706",summary:"Exceção - 493617",status:"ENVIO DE PROPOSTA",assignee:"NATANAEL NOBRE",created:"2026-03-20T12:39:07.412-0600",updated:"2026-03-20T13:13:47.516-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193705",summary:"Trade in em piso - Exceção na taxa - 494197",status:"ENVIO DE PROPOSTA",assignee:"SANTINO AZEVEDO",created:"2026-03-20T12:38:43.173-0600",updated:"2026-03-20T14:34:57.720-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193700",summary:"Exceção - Cliente em mesa",status:"ENVIO DE PROPOSTA",assignee:"Athos Medeiros Cunha",created:"2026-03-20T11:51:54.410-0600",updated:"2026-03-20T12:12:19.664-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193696",summary:"Exceção - 433667",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-20T11:33:35.545-0600",updated:"2026-03-20T12:05:36.389-0600",hub:"BOTMAKER"},
+  {key:"BSO-193694",summary:"Exceção na entrada - 492295",status:"ENVIO DE PROPOSTA",assignee:"Jose Moura",created:"2026-03-20T11:02:47.110-0600",updated:"2026-03-20T11:43:29.129-0600",hub:"BOTMAKER"},
+  {key:"BSO-193693",summary:"Simulação - 489692 - PISO PREFERENCIAL GESTANTE",status:"ENVIO DE PROPOSTA",assignee:"LUIS MIRAMAR",created:"2026-03-20T10:46:03.296-0600",updated:"2026-03-20T11:13:16.650-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193690",summary:"melhora de parcela - 484353 - PISO",status:"ENVIO DE PROPOSTA",assignee:"SANTINO AZEVEDO",created:"2026-03-20T10:14:11.195-0600",updated:"2026-03-20T10:27:44.877-0600",hub:"SANTO ANDRÉ"},
+  {key:"BSO-193689",summary:"Simulação - 482426 - PISO PREFERENCIAL GESTANTE",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-20T10:12:31.228-0600",updated:"2026-03-20T10:54:28.375-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193688",summary:"Simulação - 493968 - PISO PREFERENCIAL GESTANTE",status:"ENVIO DE PROPOSTA",assignee:"VINICIUS LARANJEIRA",created:"2026-03-20T10:10:47.313-0600",updated:"2026-03-20T10:55:03.329-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193686",summary:"Estimativa 26468527 - TERCIO SANTOS RIBEIRO",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-20T09:54:51.644-0600",updated:"2026-03-20T14:37:36.710-0600",hub:null},
+  {key:"BSO-193685",summary:"exceção - 481715",status:"ENVIO DE PROPOSTA",assignee:"Jose Moura",created:"2026-03-20T09:52:36.749-0600",updated:"2026-03-20T11:30:51.577-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193683",summary:"Simulação - 491469 - PISO",status:"ENVIO DE PROPOSTA",assignee:"LUIS MIRAMAR",created:"2026-03-20T09:47:03.738-0600",updated:"2026-03-20T11:03:23.140-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193682",summary:"Simulação - 486574 - PISO",status:"ENVIO DE PROPOSTA",assignee:"Athos Medeiros Cunha",created:"2026-03-20T09:46:00.524-0600",updated:"2026-03-20T12:12:37.371-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193681",summary:"Exceção - 495514",status:"ENVIO DE PROPOSTA",assignee:"NATANAEL NOBRE",created:"2026-03-20T09:36:32.725-0600",updated:"2026-03-20T11:38:20.277-0600",hub:"SP MARKET"},
+  {key:"BSO-193677",summary:"EXCEÇÃO - 488187",status:"ENVIO DE PROPOSTA",assignee:"SANTINO AZEVEDO",created:"2026-03-20T08:37:07.065-0600",updated:"2026-03-20T11:29:39.754-0600",hub:"BOTMAKER"},
+  {key:"BSO-193676",summary:"melhora de parcela - 475977 - PISO",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-20T08:21:49.266-0600",updated:"2026-03-20T10:37:26.830-0600",hub:"SANTO ANDRÉ"},
+  {key:"BSO-193675",summary:"Exceção - 491643 - Troca",status:"ENVIO DE PROPOSTA",assignee:"VINICIUS LARANJEIRA",created:"2026-03-20T08:11:43.321-0600",updated:"2026-03-20T09:15:40.302-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193670",summary:"exceção - 489663 - PISO",status:"ENVIO DE PROPOSTA",assignee:"NATANAEL NOBRE",created:"2026-03-19T14:52:20.316-0600",updated:"2026-03-20T08:13:14.103-0600",hub:"SANTO ANDRÉ"},
+  {key:"BSO-193669",summary:"SIMULAÇÃO - 484534 - PISO",status:"ENVIO DE PROPOSTA",assignee:"SANTINO AZEVEDO",created:"2026-03-19T14:32:11.814-0600",updated:"2026-03-20T07:33:21.595-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193667",summary:"EXCEÇÃO PARA APROVAÇÃO - 492633 - PISO",status:"ENVIO DE PROPOSTA",assignee:"VINICIUS LARANJEIRA",created:"2026-03-19T14:05:47.570-0600",updated:"2026-03-19T14:39:01.199-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193665",summary:"Simulação - 482896",status:"ENVIO DE PROPOSTA",assignee:"LUIS MIRAMAR",created:"2026-03-19T14:02:01.289-0600",updated:"2026-03-20T14:23:01.345-0600",hub:"SP MARKET"},
+  {key:"BSO-193664",summary:"Estimativa 26468580 - Willians Roger da Silva",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-19T13:48:02.612-0600",updated:"2026-03-20T14:36:52.598-0600",hub:null},
+  {key:"BSO-193663",summary:"Exceção - 494317 - PISO",status:"ENVIO DE PROPOSTA",assignee:"Athos Medeiros Cunha",created:"2026-03-19T13:42:02.392-0600",updated:"2026-03-20T07:08:25.463-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193657",summary:"EXCEÇÃO - 491598 - PISO",status:"ENVIO DE PROPOSTA",assignee:"VINICIUS LARANJEIRA",created:"2026-03-19T12:20:33.534-0600",updated:"2026-03-19T13:05:50.590-0600",hub:"BOTMAKER"},
+  {key:"BSO-193656",summary:"Simulação - 490520 - FUNCIONARIO PISO",status:"ENVIO DE PROPOSTA",assignee:"Jose Moura",created:"2026-03-19T11:10:36.506-0600",updated:"2026-03-19T15:08:28.321-0600",hub:"SANTO ANDRÉ"},
+  {key:"BSO-193652",summary:"Exceção - 495072",status:"ENVIO DE PROPOSTA",assignee:"SANTINO AZEVEDO",created:"2026-03-19T09:57:38.306-0600",updated:"2026-03-20T07:12:13.650-0600",hub:"SP MARKET"},
+  {key:"BSO-193651",summary:"Exceção - 488766 - PISO",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-19T09:45:45.279-0600",updated:"2026-03-20T09:33:12.589-0600",hub:"SP MARKET"},
+  {key:"BSO-193649",summary:"exceção - 493960 - PISO",status:"ENVIO DE PROPOSTA",assignee:"VINICIUS LARANJEIRA",created:"2026-03-19T09:38:00.906-0600",updated:"2026-03-19T12:11:39.093-0600",hub:"SANTO ANDRÉ"},
+  {key:"BSO-193644",summary:"Redução de Entrada - 486220",status:"ENVIO DE PROPOSTA",assignee:"NATANAEL NOBRE",created:"2026-03-19T08:40:46.899-0600",updated:"2026-03-20T07:55:47.558-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193643",summary:"Exceção para crédito - 486644",status:"ENVIO DE PROPOSTA",assignee:"SANTINO AZEVEDO",created:"2026-03-19T08:35:06.757-0600",updated:"2026-03-19T11:30:09.791-0600",hub:"BOTMAKER"},
+  {key:"BSO-193642",summary:"Simulação - 492633 - PISO",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-19T08:22:18.369-0600",updated:"2026-03-20T06:36:54.561-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193641",summary:"exceção - 476267 - PISO",status:"ENVIO DE PROPOSTA",assignee:"VINICIUS LARANJEIRA",created:"2026-03-19T08:13:02.253-0600",updated:"2026-03-19T12:13:10.093-0600",hub:"SANTO ANDRÉ"},
+  {key:"BSO-193636",summary:"exceção - 490233 - PISO",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-19T07:20:35.579-0600",updated:"2026-03-20T06:55:49.560-0600",hub:null},
+  {key:"BSO-193635",summary:"VALIDAÇÃO KUNA - DARVISON MARQUES",status:"ENVIO DE PROPOSTA",assignee:"Athos Medeiros Cunha",created:"2026-03-19T06:51:25.652-0600",updated:"2026-03-20T06:53:21.412-0600",hub:"SP MARKET"},
+  {key:"BSO-193634",summary:"Simulação - 491469",status:"ENVIO DE PROPOSTA",assignee:"NATANAEL NOBRE",created:"2026-03-19T06:49:23.751-0600",updated:"2026-03-20T06:33:53.483-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193633",summary:"Exceção - 493641",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-19T06:42:28.950-0600",updated:"2026-03-20T14:20:26.322-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193630",summary:"Exceção - 486929",status:"ENVIO DE PROPOSTA",assignee:"Jose Moura",created:"2026-03-18T16:22:14.488-0600",updated:"2026-03-19T13:54:25.876-0600",hub:"SP MARKET"},
+  {key:"BSO-193627",summary:"EXCEÇÃO - 491604 - PISO",status:"ENVIO DE PROPOSTA",assignee:"Athos Medeiros Cunha",created:"2026-03-18T15:28:57.668-0600",updated:"2026-03-18T15:55:34.758-0600",hub:"SP MARKET"},
+  {key:"BSO-193619",summary:"SIMULAÇÃO - 493968 - PISO",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-18T14:17:17.497-0600",updated:"2026-03-18T14:42:59.103-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193616",summary:"Simulação - PISO PREFERENCIAL",status:"ENVIO DE PROPOSTA",assignee:"LUIS MIRAMAR",created:"2026-03-18T13:59:54.067-0600",updated:"2026-03-18T14:22:44.712-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193614",summary:"Cobertura - 481230",status:"ENVIO DE PROPOSTA",assignee:"Athos Medeiros Cunha",created:"2026-03-18T13:38:23.680-0600",updated:"2026-03-18T16:24:25.188-0600",hub:"SANTO ANDRÉ"},
+  {key:"BSO-193610",summary:"Simulação - PISO PREFERENCIAL",status:"ENVIO DE PROPOSTA",assignee:"Jose Moura",created:"2026-03-18T13:05:53.844-0600",updated:"2026-03-18T14:47:07.616-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193608",summary:"Simulação - 491407 PISO PREFERENCIAL",status:"ENVIO DE PROPOSTA",assignee:"Athos Medeiros Cunha",created:"2026-03-18T12:27:51.893-0600",updated:"2026-03-18T13:08:01.172-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193605",summary:"Exceção - 494539 PISO",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-18T11:47:48.094-0600",updated:"2026-03-18T12:32:02.275-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193604",summary:"exceção - 490011 - PISO",status:"ENVIO DE PROPOSTA",assignee:"VINICIUS LARANJEIRA",created:"2026-03-18T11:35:44.512-0600",updated:"2026-03-18T11:41:30.984-0600",hub:"SANTO ANDRÉ"},
+  {key:"BSO-193603",summary:"EXCEÇÃO - PISO - 482724",status:"ENVIO DE PROPOSTA",assignee:"Jose Moura",created:"2026-03-18T11:14:04.829-0600",updated:"2026-03-18T12:04:52.841-0600",hub:"KAVAK CITY"},
+];
+
+const CON_RAW = [
+  {key:"BSO-193723",raw:"*Estimativa:* 26469347 *Placa:* LMP9H35 | *Stock ID:*  494640 *Cliente*: Tereza Santos Melo *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"VINICIUS LARANJEIRA",created:"2026-03-20T15:07:52.735-0600",updated:"2026-03-20T15:13:26.132-0600"},
+  {key:"BSO-193717",raw:"*Estimativa:* 26467888 *Placa:* DFE8C93 | *Stock ID:*  490934 *Cliente*: MARIA DO SOCORRO BARBOSA BRUCK *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"Jose Moura",created:"2026-03-20T14:24:05.728-0600",updated:"2026-03-20T15:15:43.363-0600"},
+  {key:"BSO-193715",raw:"*Estimativa:* 26468168 *Placa:* FLS0F76 | *Stock ID:*  494569 *Cliente*: CARLOS ALBERTO SANT ANA *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"Athos Medeiros Cunha",created:"2026-03-20T14:14:24.675-0600",updated:"2026-03-20T14:19:26.212-0600"},
+  {key:"BSO-193714",raw:"*Estimativa:* 26469067 *Placa:* GHF7F97 | *Stock ID:*  493354 *Cliente*: JOÃO ALVES MARTINS *Trade-in:*  Sim *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"NATANAEL NOBRE",created:"2026-03-20T13:45:01.605-0600",updated:"2026-03-20T13:47:44.907-0600"},
+  {key:"BSO-193709",raw:"*Estimativa:* 26469041 *Placa:* RFQ3H18 | *Stock ID:*  399172 *Cliente*: JOSE NARCISO PEREIRA DE SOUZA *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"SANTINO AZEVEDO",created:"2026-03-20T12:47:59.520-0600",updated:"2026-03-20T13:01:02.658-0600"},
+  {key:"BSO-193698",raw:"*Estimativa:* 26467889 *Placa:* DMI5580 | *Stock ID:*  490999 *Cliente*: SAHAR SATI MAHMOUD *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Interno",status:"Tarefas pendentes",assignee:"VINICIUS LARANJEIRA",created:"2026-03-20T11:40:18.337-0600",updated:"2026-03-20T14:51:31.322-0600"},
+  {key:"BSO-193687",raw:"*Estimativa:* 26468739 *Placa:* TCU0B84 | *Stock ID:*  493315 *Cliente*: Mairane Bueno Santos *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Interno",status:"Tarefas pendentes",assignee:"Jose Moura",created:"2026-03-20T09:57:51.365-0600",updated:"2026-03-20T13:02:21.278-0600"},
+  {key:"BSO-193686b",raw:"*Estimativa:* 26468527 *Placa:* TERCIO | *Stock ID:*  475375 *Cliente*: TERCIO SANTOS RIBEIRO *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-20T09:54:51.644-0600",updated:"2026-03-20T15:09:13.212-0600"},
+  {key:"BSO-193680",raw:"*Estimativa:* 26469038 *Placa:* FOE8B34 | *Stock ID:*  491012 *Cliente*: OLISSES CAMPOS *Trade-in:*  Sim *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"NATANAEL NOBRE",created:"2026-03-20T09:33:23.094-0600",updated:"2026-03-20T10:19:34.890-0600"},
+  {key:"BSO-193678",raw:"*Estimativa:* 26468601 *Placa:* FZN8C76 | *Stock ID:*  466427 *Cliente*: Juliana Almeida Tiburcio *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"VINICIUS LARANJEIRA",created:"2026-03-20T09:13:21.842-0600",updated:"2026-03-20T12:41:13.531-0600"},
+  {key:"BSO-193673",raw:"*Estimativa:* 26468868 *Placa:* FZR6476 | *Stock ID:*  489403 *Cliente*: Luiz Antonio Cornatione *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Aguardando SE",assignee:"Jose Moura",created:"2026-03-20T06:33:47.793-0600",updated:"2026-03-20T13:58:38.824-0600"},
+  {key:"BSO-193664b",raw:"*Estimativa:* 26468580 *Placa:* FNA2A03 | *Stock ID:*  493923 *Cliente*: Willians Roger da silva *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-19T13:48:02.612-0600",updated:"2026-03-20T14:36:52.598-0600"},
+  {key:"BSO-193661",raw:"*Estimativa:* 26466380 *Placa:* GCI7D72 | *Stock ID:*  479788 *Cliente*: ALINE GOMES PEIXOTO *Trade-in:*  Sim *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"NATANAEL NOBRE",created:"2026-03-19T13:14:40.091-0600",updated:"2026-03-20T14:34:36.984-0600"},
+  {key:"BSO-193658",raw:"*Estimativa:* 26467873 *Placa:* GFA2203 | *Stock ID:*  494562 *Cliente*: Ailton Bezerra Santos Fontes *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"SANTINO AZEVEDO",created:"2026-03-19T12:38:24.968-0600",updated:"2026-03-20T10:43:10.347-0600"},
+  {key:"BSO-193650",raw:"*Estimativa:* 26468869 *Placa:* DYE4J71 | *Stock ID:*  489695 *Cliente*: Luiz Henrique Rodrigues *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Externo",status:"Tarefas pendentes",assignee:"NATANAEL NOBRE",created:"2026-03-19T09:44:45.085-0600",updated:"2026-03-20T07:09:35.900-0600"},
+  {key:"BSO-193647",raw:"*Estimativa:* 26467601 *Placa:* FGA4B55 | *Stock ID:*  455982 *Cliente*: LORENA GOMES DA SILVA *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"VINICIUS LARANJEIRA",created:"2026-03-19T08:59:43.519-0600",updated:"2026-03-20T13:18:08.812-0600"},
+  {key:"BSO-193638",raw:"*Estimativa:* 26467707 *Placa:* FSY6D85 | *Stock ID:*  494271 *Cliente*: Marcelo Alexandre *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Aguardando SE",assignee:"Jose Moura",created:"2026-03-19T07:25:58.975-0600",updated:"2026-03-19T11:40:02.883-0600"},
+  {key:"BSO-193631",raw:"*Estimativa:* 26468414 *Placa:* GDW2825 | *Stock ID:*  481131 *Cliente*: HILTON RUBIO *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"Athos Medeiros Cunha",created:"2026-03-18T16:26:26.909-0600",updated:"2026-03-20T12:20:08.716-0600"},
+  {key:"BSO-193625",raw:"*Estimativa:* 26468188 *Placa:* RHM9G88 | *Stock ID:*  441200 *Cliente*: WILLIAM FLAVIO LUCIO *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Interno",status:"Aguardando SE",assignee:"Jose Moura",created:"2026-03-18T15:03:10.621-0600",updated:"2026-03-20T13:44:14.547-0600"},
+  {key:"BSO-193592",raw:"*Estimativa:* 26467900 *Placa:* FMA6213 | *Stock ID:*  483436 *Cliente*: edimilson souza *Trade-in:*  Sim *Forma de Pagamento:*  Financiamento Kuna",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-18T09:11:09.544-0600",updated:"2026-03-18T15:33:06.133-0600"},
+  {key:"BSO-193586",raw:"*Estimativa:* 26468088 *Placa:* GJD5B13 | *Stock ID:*  478861 *Cliente*: FATIMA DA ROSA *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"VINICIUS LARANJEIRA",created:"2026-03-18T07:43:56.165-0600",updated:"2026-03-18T18:03:57.010-0600"},
+  {key:"BSO-193575",raw:"*Estimativa:* 26468230 *Placa:* FET2289 | *Stock ID:*  488983 *Cliente*: SANTINO AZEVEDO CASTRO *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-17T13:54:53.907-0600",updated:"2026-03-18T10:54:18.106-0600"},
+  {key:"BSO-193571",raw:"*Estimativa:* 26467454 *Placa:* GDP3G49 | *Stock ID:*  490977 *Cliente*: KARIN CARILLI SCHWANS *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Aguardando SE",assignee:"Jose Moura",created:"2026-03-17T13:29:06.578-0600",updated:"2026-03-19T07:16:07.983-0600"},
+  {key:"BSO-193566",raw:"*Estimativa:* 26467677 *Placa:* GEV6D02 | *Stock ID:*  493659 *Cliente*: Andre A Luiz Vitor *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Aguardando BKO",assignee:"Athos Medeiros Cunha",created:"2026-03-17T12:16:57.533-0600",updated:"2026-03-17T14:22:08.141-0600"},
+  {key:"BSO-193564",raw:"*Estimativa:* 26467875 *Placa:* PMH9038 | *Stock ID:*  491066 *Cliente*: Laisa Maria Cesario Freitas *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"SANTINO AZEVEDO",created:"2026-03-17T11:53:31.632-0600",updated:"2026-03-19T15:19:02.357-0600"},
+  {key:"BSO-193562",raw:"*Estimativa:* 26467979 *Placa:* ELS7919 | *Stock ID:*  471677 *Cliente*: JUCELINO RODRIGUES NOBRE *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Interno",status:"Tarefas pendentes",assignee:"VINICIUS LARANJEIRA",created:"2026-03-17T11:32:48.406-0600",updated:"2026-03-18T09:05:17.357-0600"},
+  {key:"BSO-193560",raw:"*Estimativa:* 26467698 *Placa:* EUR0731 | *Stock ID:*  494276 *Cliente*: VERIDIANA CHRISTE HELFSTEIN *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Aguardando SE",assignee:"Jose Moura",created:"2026-03-17T11:01:56.122-0600",updated:"2026-03-20T14:00:32.956-0600"},
+  {key:"BSO-193551",raw:"*Estimativa:* 26467682 *Placa:* BYI7D32 | *Stock ID:*  479156 *Cliente*: Roberta Moreira Generoso *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Aguardando SE",assignee:"Jose Moura",created:"2026-03-17T08:20:37.255-0600",updated:"2026-03-19T08:36:28.084-0600"},
+  {key:"BSO-193550",raw:"*Estimativa:* 26467431 *Placa:* DRH7D91 | *Stock ID:*  486014 *Cliente*: Andressa Cruz Miranda *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Aguardando SE",assignee:"Athos Medeiros Cunha",created:"2026-03-17T08:15:39.051-0600",updated:"2026-03-17T14:26:21.970-0600"},
+  {key:"BSO-193545",raw:"*Estimativa:* 26467937 *Placa:* FZZ2C13 | *Stock ID:*  491059 *Cliente*: Gabriel Carvalho *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"SANTINO AZEVEDO",created:"2026-03-16T16:30:29.618-0600",updated:"2026-03-20T11:47:44.787-0600"},
+  {key:"BSO-193544",raw:"*Estimativa:* 26467459 *Placa:* EFO6E04 | *Stock ID:*  484547 *Cliente*: RAFAEL PINHEIRO *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Interno",status:"Tarefas pendentes",assignee:"VINICIUS LARANJEIRA",created:"2026-03-16T15:57:31.033-0600",updated:"2026-03-20T12:56:12.838-0600"},
+  {key:"BSO-193540",raw:"*Estimativa:* 26467194 *Placa:* DGY9037 | *Stock ID:*  488709 *Cliente*: BRUNO VINICIUS SANTOS NOBREGA CAMARGO *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Aguardando SE",assignee:"Jose Moura",created:"2026-03-16T14:56:05.468-0600",updated:"2026-03-19T08:36:09.782-0600"},
+  {key:"BSO-193539",raw:"*Estimativa:* 26467730 *Placa:* FLB2504 | *Stock ID:*  487710 *Cliente*: JOSE IRLANDO DA SILVA SANTOS *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Interno",status:"Tarefas pendentes",assignee:"SANTINO AZEVEDO",created:"2026-03-16T14:15:50.708-0600",updated:"2026-03-18T10:20:06.298-0600"},
+  {key:"BSO-193536",raw:"*Estimativa:* 26467065 *Placa:* SWF1H01 | *Stock ID:*  466490 *Cliente*: ALEXANDER LUIZ GOUVEA *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Interno",status:"Tarefas pendentes",assignee:"VINICIUS LARANJEIRA",created:"2026-03-16T13:51:54.803-0600",updated:"2026-03-18T08:23:03.429-0600"},
+  {key:"BSO-193530",raw:"*Estimativa:* 26467710 *Placa:* DNS6D81 | *Stock ID:*  486265 *Cliente*: NATALI CAROLINA DA SILVA SOUZ *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Aguardando SE",assignee:"Jose Moura",created:"2026-03-16T13:04:12.537-0600",updated:"2026-03-18T13:56:35.710-0600"},
+  {key:"BSO-193527",raw:"*Estimativa:* 26467773 *Placa:* OXK0I84 | *Stock ID:*  494316 *Cliente*: Isabella Silva santos *Trade-in:*  Não *Forma de Pagamento:*  Financiamento Kuna",status:"Tarefas pendentes",assignee:"SANTINO AZEVEDO",created:"2026-03-16T12:42:54.042-0600",updated:"2026-03-20T08:23:05.808-0600"},
+].map(t=>({...t, summary: parseConSummary(t.raw)}));
+
+const SLA_H = 24;
+function getSla(d,l){const h=(Date.now()-new Date(d))/36e5;return h>l?"breach":h>l*.75?"warning":"ok";}
+function fmtDate(d){return d?new Date(d).toLocaleString("pt-BR",{day:"2-digit",month:"2-digit",hour:"2-digit",minute:"2-digit"}):"—";}
+function hrsAgo(d){return d?Math.round((Date.now()-new Date(d))/36e5):null;}
+function initials(n=""){return n.split(" ").slice(0,2).map(w=>w[0]).join("").toUpperCase();}
+const AC=["#6366f1","#0ea5e9","#10b981","#f59e0b","#ef4444","#8b5cf6","#ec4899","#14b8a6"];
+function acolor(n=""){let h=0;for(const c of n)h=(h*31+c.charCodeAt(0))%AC.length;return AC[Math.abs(h)];}
+const SLA_CFG={ok:{label:"SLA OK",bg:"#d1fae5",color:"#065f46",border:"#6ee7b7"},warning:{label:"SLA Risco",bg:"#fef3c7",color:"#92400e",border:"#fcd34d"},breach:{label:"SLA Violado",bg:"#fee2e2",color:"#991b1b",border:"#fca5a5"}};
+const HUB_CFG={"BOTMAKER":{bg:"#ede9fe",color:"#5b21b6",border:"#c4b5fd"},"KAVAK CITY":{bg:"#dbeafe",color:"#1e40af",border:"#93c5fd"},"SP MARKET":{bg:"#dcfce7",color:"#14532d",border:"#86efac"},"SANTO ANDRÉ":{bg:"#fef3c7",color:"#78350f",border:"#fcd34d"}};
+
+export default function App() {
+  const [search, setSearch]     = useState("");
+  const [analistaF, setAnalista]= useState("all");
+  const [hubF, setHub]          = useState("all");
+  const [slaLimit, setSla]      = useState(SLA_H);
+  const [activeTab, setTab]     = useState("sim");
+  const [simData, setSimData]   = useState(SIM_RAW);
+  const [conData, setConData]   = useState(CON_RAW);
+  const [loading, setLoading]   = useState(false);
+  const [lastFetch, setLastFetch] = useState(null);
+  const [toasts, setToasts]     = useState([]);
+
+  const addToast = (msg, type="info") => {
+    const id = Date.now();
+    setToasts(p=>[...p,{id,msg,type}]);
+    setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),4000);
+  };
+
+  const fetchAll = async () => {
+    setLoading(true);
+    try {
+      const res = await fetch(DATA_URL);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      const d = await res.json();
+      if (d.sim?.length) { setSimData(d.sim); setConData(d.con||[]); setLastFetch(new Date()); addToast("✅ Dados atualizados do Jira","ok"); }
+      else throw new Error("Sem dados");
+    } catch(e) {
+      addToast(`⚠️ Usando dados locais`,"warn");
+    }
+    setLoading(false);
+  };
+
+  useEffect(()=>{
+    fetchAll();
+    const iv = setInterval(fetchAll, AUTO_REFRESH_MIN * 60 * 1000);
+    return ()=>clearInterval(iv);
+  },[]);
+
+  const allAnalistas = useMemo(()=>Array.from(new Set([...simData,...conData].map(t=>t.assignee).filter(Boolean))).sort(),[simData,conData]);
+  const hubs = useMemo(()=>Array.from(new Set(simData.map(t=>t.hub).filter(Boolean))).sort(),[simData]);
+
+  const filt = (arr, isS=true) => arr.filter(t=>{
+    if(analistaF!=="all"&&t.assignee!==analistaF) return false;
+    if(isS&&hubF!=="all"&&(t.hub||null)!==hubF) return false;
+    if(search){const q=search.toLowerCase();return[t.key,t.summary,t.assignee,t.hub].some(v=>(v||"").toLowerCase().includes(q));}
+    return true;
+  });
+
+  const simFiltered = filt(simData, true);
+  const conFiltered = filt(conData, false);
+  const simGroups = SIM_COLS.map(col=>({col, items: simFiltered.filter(t=>colId(t.status,SIM_COLS)===col.id)}));
+  const conGroups = CON_COLS.map(col=>({col, items: conFiltered.filter(t=>colId(t.status,CON_COLS)===col.id)}));
+  const allT = [...simData,...conData];
+  const breach = allT.filter(t=>getSla(t.created,slaLimit)==="breach").length;
+  const risk   = allT.filter(t=>getSla(t.created,slaLimit)==="warning").length;
+
+  const Card = ({t, showHub=true}) => {
+    const sla=getSla(t.created,slaLimit), sc=SLA_CFG[sla], hrs=hrsAgo(t.created);
+    const hc=showHub&&t.hub?HUB_CFG[t.hub]:null;
+    const copyKey=(e)=>{e.stopPropagation();const el=e.currentTarget;try{const ta=document.createElement("textarea");ta.value=t.key;ta.style.cssText="position:fixed;opacity:0";document.body.appendChild(ta);ta.focus();ta.select();document.execCommand("copy");document.body.removeChild(ta);}catch(_){}el.textContent="✓";setTimeout(()=>el.textContent="⎘",1200);};
+    return (
+      <div style={{background:"#f8fafc",border:`1px solid ${sc.border}`,borderRadius:9,padding:"9px 11px",borderLeft:`4px solid ${sc.color}`}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
+          <div style={{display:"flex",alignItems:"center",gap:4}}>
+            <a href={`${JIRA_URL}/browse/${t.key}`} target="_blank" rel="noreferrer" style={{fontWeight:800,color:"#2563eb",fontSize:11,fontFamily:"monospace",textDecoration:"none"}}>{t.key} ↗</a>
+            <button onClick={copyKey} style={{background:"#f1f5f9",border:"1px solid #e2e8f0",borderRadius:4,padding:"1px 5px",fontSize:10,cursor:"pointer",color:"#64748b",fontWeight:600}}>⎘</button>
+          </div>
+          <span style={{background:sc.bg,color:sc.color,fontSize:9,fontWeight:700,padding:"2px 6px",borderRadius:20,border:`1px solid ${sc.border}`,whiteSpace:"nowrap"}}>{sc.label}{hrs!==null?` · ${hrs}h`:""}</span>
+        </div>
+        <div style={{fontSize:11,color:"#334155",marginBottom:4,lineHeight:1.4,fontWeight:500}}>{(t.summary||"").slice(0,100)}{(t.summary||"").length>100?"…":""}</div>
+        {hc&&<div style={{marginBottom:4}}><span style={{background:hc.bg,color:hc.color,border:`1px solid ${hc.border}`,fontSize:9,fontWeight:700,padding:"1px 7px",borderRadius:20}}>📍 {t.hub}</span></div>}
+        <div style={{display:"flex",alignItems:"center",gap:4,fontSize:9,color:"#64748b",marginBottom:3}}>
+          <div style={{width:16,height:16,borderRadius:"50%",background:acolor(t.assignee||""),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:800,flexShrink:0}}>{initials(t.assignee||"")}</div>
+          <span>{t.assignee||"—"}</span>
+        </div>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 6px"}}>
+          <div style={{fontSize:9,color:"#64748b"}}>🕐 {fmtDate(t.created)}</div>
+          <div style={{fontSize:9,color:"#94a3b8"}}>✏️ {fmtDate(t.updated)}</div>
+        </div>
+      </div>
+    );
+  };
+
+  const Column = ({col, items, showHub=true}) => (
+    <div style={{background:"#fff",borderRadius:10,border:`1px solid ${col.border}`,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+      <div style={{background:col.bg,padding:"8px 12px",borderBottom:`1px solid ${col.border}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span style={{fontWeight:700,color:"#1e293b",fontSize:11}}>{col.icon} {col.label}</span>
+        <span style={{background:col.badge,color:"#fff",borderRadius:20,fontSize:10,fontWeight:700,padding:"2px 8px"}}>{items.length}</span>
+      </div>
+      <div style={{padding:8,display:"flex",flexDirection:"column",gap:6,maxHeight:520,overflowY:"auto"}}>
+        {items.length===0
+          ? <div style={{textAlign:"center",color:"#cbd5e1",fontSize:11,padding:"20px 0"}}>Nenhum ticket</div>
+          : items.map(t=><Card key={t.key} t={t} showHub={showHub}/>)}
+      </div>
+    </div>
+  );
+
+  return (
+    <div style={{fontFamily:"'Inter',sans-serif",background:"#f1f5f9",minHeight:"100vh",padding:"14px 18px",boxSizing:"border-box"}}>
+      {/* Toasts */}
+      <div style={{position:"fixed",top:16,right:16,zIndex:9999,display:"flex",flexDirection:"column",gap:6}}>
+        {toasts.map(t=>(
+          <div key={t.id} style={{padding:"8px 14px",borderRadius:8,fontSize:11,fontWeight:600,boxShadow:"0 4px 12px rgba(0,0,0,.15)",
+            background:t.type==="ok"?"#d1fae5":"#fef3c7",
+            color:t.type==="ok"?"#065f46":"#92400e",
+            border:`1px solid ${t.type==="ok"?"#6ee7b7":"#fcd34d"}`}}>{t.msg}</div>
+        ))}
+      </div>
+
+      {/* Header */}
+      <div style={{display:"flex",alignItems:"flex-start",justifyContent:"space-between",marginBottom:12,flexWrap:"wrap",gap:8}}>
+        <div>
+          <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+            <span style={{fontSize:17,fontWeight:800,color:"#0f172a"}}>🏦 Financing Ops Pipeline</span>
+            <a href={`${JIRA_URL}/jira/servicedesk/projects/BSO/queues/custom/7342`} target="_blank" rel="noreferrer" style={{fontSize:9,background:"#dbeafe",color:"#1e40af",padding:"2px 8px",borderRadius:20,fontWeight:700,textDecoration:"none"}}>Simulação #7342 ↗</a>
+            <a href={`${JIRA_URL}/jira/servicedesk/projects/BSO/queues/custom/8400`} target="_blank" rel="noreferrer" style={{fontSize:9,background:"#fce7f3",color:"#be185d",padding:"2px 8px",borderRadius:20,fontWeight:700,textDecoration:"none"}}>Contratos #8400 ↗</a>
+          </div>
+          <div style={{fontSize:9,color:"#94a3b8",marginTop:2}}>
+            {lastFetch ? `✅ Jira · ${lastFetch.toLocaleTimeString("pt-BR")} · auto-refresh ${AUTO_REFRESH_MIN}min` : "📦 Dados locais — clique Atualizar para buscar do Jira"}
+          </div>
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}>
+          <button onClick={fetchAll} disabled={loading} style={{padding:"5px 12px",borderRadius:7,border:"1px solid #bbf7d0",background:loading?"#f1f5f9":"#f0fdf4",color:loading?"#94a3b8":"#16a34a",fontSize:10,fontWeight:700,cursor:loading?"not-allowed":"pointer"}}>
+            {loading?"⏳ Buscando...":"🔄 Atualizar"}
+          </button>
+          <label style={{fontSize:11,color:"#64748b",display:"flex",alignItems:"center",gap:5}}>
+            SLA (h): <input type="number" value={slaLimit} min={1} max={168} onChange={e=>setSla(Number(e.target.value))} style={{width:44,padding:"3px 5px",border:"1px solid #e2e8f0",borderRadius:6,fontSize:11}}/>
+          </label>
+        </div>
+      </div>
+
+      {/* Metrics */}
+      <div style={{display:"grid",gridTemplateColumns:"repeat(6,1fr)",gap:7,marginBottom:10}}>
+        {[
+          {label:"Simulação",   value:simData.length,  icon:"📊",bg:"#eff6ff",color:"#1d4ed8"},
+          {label:"Contratos",   value:conData.length,  icon:"📋",bg:"#fdf2f8",color:"#be185d"},
+          {label:"Ag. Cliente", value:conGroups.find(g=>g.col.id==="aguardando")?.items.length||0, icon:"⏳",bg:"#fefce8",color:"#854d0e"},
+          {label:"Contrato ✅", value:conGroups.find(g=>g.col.id==="contrato_ass")?.items.length||0, icon:"✅",bg:"#f0fdf4",color:"#15803d"},
+          {label:"SLA Risco",   value:risk,   icon:"🟡",bg:"#fefce8",color:"#854d0e"},
+          {label:"SLA Violado", value:breach, icon:"🔴",bg:"#fff1f2",color:"#9f1239"},
+        ].map(m=>(
+          <div key={m.label} style={{background:m.bg,borderRadius:9,padding:"9px 11px",border:"1px solid #e2e8f0"}}>
+            <div style={{fontSize:14}}>{m.icon}</div>
+            <div style={{fontSize:20,fontWeight:800,color:m.color,lineHeight:1.1,marginTop:1}}>{m.value}</div>
+            <div style={{fontSize:9,color:"#64748b",marginTop:1,fontWeight:500}}>{m.label}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Hub filter */}
+      <div style={{background:"#fff",borderRadius:9,padding:"8px 12px",marginBottom:10,border:"1px solid #e2e8f0",display:"flex",alignItems:"center",gap:8,flexWrap:"wrap"}}>
+        <span style={{fontSize:10,fontWeight:700,color:"#475569"}}>📍 Hub</span>
+        {hubs.map(h=>{const c=HUB_CFG[h]||{bg:"#f1f5f9",color:"#475569",border:"#e2e8f0"};return(
+          <button key={h} onClick={()=>setHub(hubF===h?"all":h)} style={{padding:"2px 9px",borderRadius:20,border:`1px solid ${c.border}`,background:hubF===h?c.color:c.bg,color:hubF===h?"#fff":c.color,fontSize:10,fontWeight:700,cursor:"pointer"}}>
+            {h} <span style={{opacity:.7}}>({simData.filter(t=>t.hub===h).length})</span>
+          </button>
+        );})}
+      </div>
+
+      {/* Filters */}
+      <div style={{background:"#fff",borderRadius:9,padding:"9px 12px",marginBottom:12,border:"1px solid #e2e8f0",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
+        <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Chave, resumo, cliente, responsável..."
+          style={{flex:1,minWidth:150,padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:11,background:"#f8fafc"}}/>
+        <select value={analistaF} onChange={e=>setAnalista(e.target.value)} style={{padding:"6px 9px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:11,background:"#f8fafc",color:"#334155",cursor:"pointer",minWidth:160}}>
+          {["all",...allAnalistas].map(a=>(<option key={a} value={a}>{a==="all"?"👤 Todos os analistas":a}</option>))}
+        </select>
+        {(analistaF!=="all"||hubF!=="all"||search)&&(
+          <button onClick={()=>{setAnalista("all");setHub("all");setSearch("");}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #fca5a5",background:"#fff1f2",color:"#991b1b",fontSize:10,fontWeight:600,cursor:"pointer"}}>✕ Limpar</button>
+        )}
+        <span style={{fontSize:9,color:"#94a3b8"}}>{simFiltered.length+conFiltered.length} tickets</span>
+      </div>
+
+      {/* Tabs */}
+      <div style={{display:"flex",gap:6,marginBottom:12}}>
+        {[["sim","📊 Simulação"],["contract","📋 Contratos"],["all","⊞ Visão Completa"]].map(([id,label])=>(
+          <button key={id} onClick={()=>setTab(id)} style={{padding:"6px 14px",borderRadius:8,border:"1px solid #e2e8f0",background:activeTab===id?"#0f172a":"#fff",color:activeTab===id?"#fff":"#475569",fontWeight:600,fontSize:11,cursor:"pointer"}}>{label}</button>
+        ))}
+      </div>
+
+      {(activeTab==="sim"||activeTab==="all")&&(
+        <div style={{marginBottom:activeTab==="all"?20:0}}>
+          {activeTab==="all"&&<div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>📊 SIMULAÇÃO — Fila #7342</div>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
+            {simGroups.map(({col,items})=><Column key={col.id} col={col} items={items} showHub={true}/>)}
+          </div>
+        </div>
+      )}
+
+      {(activeTab==="contract"||activeTab==="all")&&(
+        <div>
+          {activeTab==="all"&&<div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>📋 CONTRATOS — Fila #8400</div>}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
+            {conGroups.map(({col,items})=><Column key={col.id} col={col} items={items} showHub={false}/>)}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
