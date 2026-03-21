@@ -76,7 +76,7 @@ function App(){
       const cutoff=today.toISOString().split("T")[0];
       const jql1=encodeURIComponent(`project=${PROJ} AND issuetype=${SIM_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "${cutoff}" ORDER BY created DESC`);
       const jql2=encodeURIComponent(`project=${PROJ} AND issuetype=${CON_TYPE} AND statusCategory not in ("Done") AND status not in ("Fechada","Cancelado","Cancelada","Closed","Resolved") AND created >= "${cutoff}" ORDER BY created DESC`);
-      const fields="summary,status,assignee,reporter,created,updated,customfield_10000";
+      const fields="summary,status,assignee,reporter,created,updated,customfield_22543";
 
       // ✅ Chamadas agora vão pelo Worker (sem auth no frontend)
       const [r1,r2]=await Promise.all([
@@ -84,7 +84,7 @@ function App(){
         fetch(`${WORKER}/rest/api/3/search/jql?jql=${jql2}&maxResults=100&fields=${fields}`)
       ]);
       const [d1,d2]=await Promise.all([r1.json(),r2.json()]);
-      const map=i=>({key:i.key,summary:i.fields?.summary||"",status:i.fields?.status?.name||"",assignee:i.fields?.assignee?.displayName||null,created:i.fields?.created,updated:i.fields?.updated,hub:i.fields?.customfield_10000||null});
+      const map=i=>({key:i.key,summary:i.fields?.summary||"",status:i.fields?.status?.name||"",assignee:i.fields?.assignee?.displayName||null,created:i.fields?.created,updated:i.fields?.updated,hub:i.fields?.customfield_22543?.value||null});
       const sim=(d1.issues||[]).map(map);
       const con=(d2.issues||[]).map(i=>({...map(i),summary:pcs(i.fields?.summary||"")}));
       if(sim.length||con.length){setSd(sim);setCd(con);setLast(new Date());toast("✅ Dados atualizados do Jira","ok");}
