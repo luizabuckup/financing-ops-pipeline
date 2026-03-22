@@ -10,29 +10,16 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/babel-standalone/7.23.2/babel.min.js"></script>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-body{font-family:Inter,sans-serif;background:#f1f5f9}
-.dragging{opacity:.4;transform:scale(.97)}
-.drag-over{outline:2px dashed #6366f1;outline-offset:2px;background:#f5f3ff!important}
-.card-drag{cursor:grab}
-.card-drag:active{cursor:grabbing}
-.assignee-dropdown{position:absolute;top:100%;left:0;z-index:999;background:#fff;border:1px solid #e2e8f0;border-radius:8px;box-shadow:0 8px 24px rgba(0,0,0,.12);min-width:200px;max-height:220px;overflow-y:auto}
-.assignee-dropdown button{display:flex;align-items:center;gap:8px;width:100%;padding:7px 10px;border:none;background:none;cursor:pointer;font-size:11px;text-align:left}
-.assignee-dropdown button:hover{background:#f1f5f9}
-</style>
+<style>*{box-sizing:border-box;margin:0;padding:0}body{font-family:Inter,sans-serif;background:#f1f5f9}</style>
 </head>
 <body>
 <div id="root"></div>
 <script type="text/babel">
-const {useState,useMemo,useEffect,useRef,useCallback}=React;
+const {useState,useMemo,useEffect}=React;
+
 const WORKER="https://lively-paper-ef9a.luiza-buckup.workers.dev";
 const JIRA="https://kavak.atlassian.net";
 const SIM_TYPE="13327",CON_TYPE="10478",PROJ="BSO";
-
-// Mapa de transições: coluna → transition id
-const SIM_TRANS={"em_andamento":"61","envio_proposta":"81","analise_docs":"91","ag_cliente":"31"};
-const CON_TRANS={"em_andamento":"61","contrato_ass":"41","aguardando":"21"};
 
 const SC=[
   {id:"em_andamento",label:"Em Andamento",icon:"🔄",bg:"#f0fdf4",bd:"#bbf7d0",bk:"#16a34a",st:["em andamento","tarefas pendentes"]},
@@ -48,6 +35,17 @@ const CC=[
 const IGN=["cancelado","cancelada","concluído","concluido","done","closed","resolvido","resolved","fechada"];
 function cid(s,cols){const v=(s||"").trim().toLowerCase();if(IGN.includes(v))return null;for(const c of cols)if(c.st.includes(v))return c.id;return cols[0].id;}
 function pcs(raw){const m=f=>{const r=(raw||"").match(new RegExp(`\\*${f}:\\*\\s*([^\\*•\\|]+)`));return r?r[1].trim().replace(/<[^>]+>/g,"").trim():null;};const cl=m("Cliente"),pl=m("Placa"),pg=m("Forma de Pagamento");if(cl)return`${cl}${pl?` · ${pl}`:""}${pg?` · ${pg}`:""}`;return(raw||"").replace(/<[^>]+>/g,"").slice(0,120);}
+
+const SIM=[
+  {key:"BSO-193722",summary:"exceção - 495309",status:"ENVIO DE PROPOSTA",assignee:"JOAO RICARDO",created:"2026-03-20T14:54:24.577-0600",updated:"2026-03-20T15:02:52.030-0600",hub:"BOTMAKER"},
+  {key:"BSO-193721",summary:"EXCEÇÃO ENTRADA - 486917 - PISO",status:"ENVIO DE PROPOSTA",assignee:"VINICIUS LARANJEIRA",created:"2026-03-20T14:46:12.316-0600",updated:"2026-03-20T15:01:07.479-0600",hub:"KAVAK CITY"},
+  {key:"BSO-193686",summary:"Estimativa 26468527 - TERCIO SANTOS RIBEIRO",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-20T09:54:51.644-0600",updated:"2026-03-20T14:37:36.710-0600",hub:null},
+  {key:"BSO-193664",summary:"Estimativa 26468580 - Willians Roger da Silva",status:"Em andamento",assignee:"Athos Medeiros Cunha",created:"2026-03-19T13:48:02.612-0600",updated:"2026-03-20T14:36:52.598-0600",hub:null},
+];
+const CON=[
+  {key:"BSO-193723",raw:"*Cliente*: Tereza Santos Melo *Placa:* LMP9H35 *Forma de Pagamento:* Financiamento Kuna",status:"Tarefas pendentes",assignee:"VINICIUS LARANJEIRA",created:"2026-03-20T15:07:52.735-0600",updated:"2026-03-20T15:13:26.132-0600"},
+  {key:"BSO-193717",raw:"*Cliente*: MARIA DO SOCORRO BARBOSA *Placa:* DFE8C93 *Forma de Pagamento:* Financiamento Kuna",status:"Tarefas pendentes",assignee:"Jose Moura",created:"2026-03-20T14:24:05.728-0600",updated:"2026-03-20T15:15:43.363-0600"},
+].map(t=>({...t,summary:pcs(t.raw)}));
 
 const SH=24;
 function sla(d,l){const h=(Date.now()-new Date(d))/36e5;return h>l?"breach":h>l*.75?"warning":"ok";}
@@ -65,17 +63,15 @@ function App(){
   const [hf,setHf]=useState("all");
   const [sl,setSl]=useState(SH);
   const [tab,setTab]=useState("sim");
-  const [sd,setSd]=useState([]);
-  const [cd,setCd]=useState([]);
+  const [sd,setSd]=useState(SIM);
+  const [cd,setCd]=useState(CON);
   const [loading,setLoading]=useState(false);
   const [last,setLast]=useState(null);
   const [toasts,setToasts]=useState([]);
-  const [analysts,setAnalysts]=useState({}); // accountId → {displayName, accountId}
-  const dragRef=useRef(null); // {key, fromCol, isSim}
 
   const toast=(msg,type="info")=>{const id=Date.now();setToasts(p=>[...p,{id,msg,type}]);setTimeout(()=>setToasts(p=>p.filter(t=>t.id!==id)),4000);};
 
-  const fetchAll=useCallback(async()=>{
+  const fetchAll=async()=>{
     setLoading(true);
     try{
       const today=new Date();today.setDate(today.getDate()-30);
@@ -89,86 +85,25 @@ function App(){
       ]);
       const [d1,d2]=await Promise.all([r1.json(),r2.json()]);
       const map=i=>{
-        const a=i.fields?.assignee;
-        if(a) setAnalysts(p=>({...p,[a.accountId]:{displayName:a.displayName,accountId:a.accountId}}));
-        return{key:i.key,summary:i.fields?.summary||"",status:i.fields?.status?.name||"",assignee:a?.displayName||null,accountId:a?.accountId||null,created:i.fields?.created,updated:i.fields?.updated,hub:i.fields?.customfield_22543?.value||null};
+        const hub=i.fields?.customfield_22543?.value||null;
+        return{key:i.key,summary:i.fields?.summary||"",status:i.fields?.status?.name||"",assignee:i.fields?.assignee?.displayName||null,created:i.fields?.created,updated:i.fields?.updated,hub};
       };
       const sim=(d1.issues||[]).map(map);
       const con=(d2.issues||[]).map(i=>({...map(i),summary:pcs(i.fields?.summary||"")}));
       if(sim.length||con.length){setSd(sim);setCd(con);setLast(new Date());toast("✅ Dados atualizados do Jira","ok");}
       else throw new Error("sem dados");
-    }catch(e){toast("⚠️ "+e.message,"warn");}
+    }catch(e){toast("⚠️ Usando dados locais: "+e.message,"warn");}
     setLoading(false);
-  },[]);
+  };
 
   useEffect(()=>{fetchAll();const iv=setInterval(fetchAll,5*60*1000);return()=>clearInterval(iv);},[]);
 
-  // ── Transição de status via Jira ──
-  const doTransition=async(key,transitionId)=>{
-    const r=await fetch(`${WORKER}/rest/api/3/issue/${key}/transitions`,{
-      method:"POST",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({transition:{id:transitionId}})
-    });
-    if(!r.ok&&r.status!==204) throw new Error(`Transition failed ${r.status}`);
-  };
-
-  // ── Troca de assignee via Jira ──
-  const doAssign=async(key,accountId)=>{
-    const r=await fetch(`${WORKER}/rest/api/3/issue/${key}/assignee`,{
-      method:"PUT",
-      headers:{"Content-Type":"application/json"},
-      body:JSON.stringify({accountId})
-    });
-    if(!r.ok&&r.status!==204) throw new Error(`Assign failed ${r.status}`);
-  };
-
-  // ── Drag handlers ──
-  const onDragStart=(key,fromCol,isSim)=>e=>{
-    dragRef.current={key,fromCol,isSim};
-    e.dataTransfer.effectAllowed="move";
-  };
-  const onDragOver=e=>{e.preventDefault();e.dataTransfer.dropEffect="move";};
-  const onDrop=(toCol,isSim)=>async e=>{
-    e.preventDefault();
-    const drag=dragRef.current;
-    if(!drag||drag.fromCol===toCol) return;
-    const transMap=isSim?SIM_TRANS:CON_TRANS;
-    const tid=transMap[toCol];
-    if(!tid){toast("⚠️ Transição não mapeada","warn");return;}
-    const setD=isSim?setSd:setCd;
-    // Optimistic update
-    setD(p=>p.map(t=>t.key===drag.key?{...t,status:toCol}:t));
-    try{
-      await doTransition(drag.key,tid);
-      toast(`✅ ${drag.key} movido para ${toCol.replace("_"," ")}` ,"ok");
-      setTimeout(fetchAll,1500);
-    }catch(err){
-      toast(`❌ Erro ao mover ${drag.key}`,"warn");
-      setD(p=>p.map(t=>t.key===drag.key?{...t,status:drag.fromCol}:t));
-    }
-    dragRef.current=null;
-  };
-
-  // ── Reassign handler ──
-  const onReassign=async(key,accountId,displayName,isSim)=>{
-    const setD=isSim?setSd:setCd;
-    setD(p=>p.map(t=>t.key===key?{...t,assignee:displayName,accountId}:t));
-    try{
-      await doAssign(key,accountId);
-      toast(`✅ ${key} atribuído a ${displayName}`,"ok");
-    }catch(err){
-      toast(`❌ Erro ao reatribuir ${key}`,"warn");
-      setTimeout(fetchAll,500);
-    }
-  };
-
-  const anas=useMemo(()=>Object.values(analysts).sort((a,b)=>a.displayName.localeCompare(b.displayName)),[analysts]);
+  const anas=useMemo(()=>Array.from(new Set([...sd,...cd].map(t=>t.assignee).filter(Boolean))).sort(),[sd,cd]);
   const hubs=useMemo(()=>Array.from(new Set(sd.map(t=>t.hub).filter(Boolean))).sort(),[sd]);
 
   const filt=(arr,isS=true)=>arr.filter(t=>{
     if(af!=="all"&&t.assignee!==af)return false;
-    if(isS&&hf!=="all"&&t.hub!==hf)return false;
+    if(isS&&hf!=="all"&&(t.hub||null)!==hf)return false;
     if(search){const q=search.toLowerCase();return[t.key,t.summary,t.assignee,t.hub].some(v=>(v||"").toLowerCase().includes(q));}
     return true;
   });
@@ -180,33 +115,12 @@ function App(){
   const breach=all.filter(t=>sla(t.created,sl)==="breach").length;
   const risk=all.filter(t=>sla(t.created,sl)==="warning").length;
 
-  const Card=({t,isSim=true,colId})=>{
-    const [showAssign,setShowAssign]=useState(false);
-    const [saving,setSaving]=useState(false);
-    const ref=useRef();
+  const Card=({t,showHub=true})=>{
     const s=sla(t.created,sl),sc=SLC[s],h=ha(t.created);
-    const hc=isSim&&t.hub?HC[t.hub]:null;
-
-    useEffect(()=>{
-      const fn=e=>{if(ref.current&&!ref.current.contains(e.target))setShowAssign(false);};
-      document.addEventListener("mousedown",fn);return()=>document.removeEventListener("mousedown",fn);
-    },[]);
-
+    const hc=showHub&&t.hub?HC[t.hub]:null;
     const cp=e=>{e.stopPropagation();const el=e.currentTarget;try{const ta=document.createElement("textarea");ta.value=t.key;ta.style.cssText="position:fixed;opacity:0";document.body.appendChild(ta);ta.focus();ta.select();document.execCommand("copy");document.body.removeChild(ta);}catch(_){}el.textContent="✓";setTimeout(()=>el.textContent="⎘",1200);};
-
-    const handleAssign=async(accountId,displayName)=>{
-      setSaving(true);setShowAssign(false);
-      await onReassign(t.key,accountId,displayName,isSim);
-      setSaving(false);
-    };
-
     return(
-      <div
-        className="card-drag"
-        draggable
-        onDragStart={onDragStart(t.key,colId,isSim)}
-        style={{background:"#f8fafc",border:`1px solid ${sc.b}`,borderRadius:9,padding:"9px 11px",borderLeft:`4px solid ${sc.c}`,marginBottom:6,userSelect:"none"}}
-      >
+      <div style={{background:"#f8fafc",border:`1px solid ${sc.b}`,borderRadius:9,padding:"9px 11px",borderLeft:`4px solid ${sc.c}`,marginBottom:6}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:3}}>
           <div style={{display:"flex",alignItems:"center",gap:4}}>
             <a href={`${JIRA}/browse/${t.key}`} target="_blank" style={{fontWeight:800,color:"#2563eb",fontSize:11,fontFamily:"monospace",textDecoration:"none"}}>{t.key} ↗</a>
@@ -216,31 +130,11 @@ function App(){
         </div>
         <div style={{fontSize:11,color:"#334155",marginBottom:4,lineHeight:1.4,fontWeight:500}}>{(t.summary||"").slice(0,100)}{(t.summary||"").length>100?"…":""}</div>
         {hc&&<div style={{marginBottom:4}}><span style={{background:hc.bg,color:hc.c,border:`1px solid ${hc.b}`,fontSize:9,fontWeight:700,padding:"1px 7px",borderRadius:20}}>📍 {t.hub}</span></div>}
-        {/* Assignee com dropdown */}
-        <div ref={ref} style={{position:"relative",display:"inline-block"}}>
-          <button
-            onClick={e=>{e.stopPropagation();setShowAssign(p=>!p);}}
-            title="Clique para reatribuir"
-            style={{display:"flex",alignItems:"center",gap:4,fontSize:9,color:"#64748b",background:"none",border:"1px solid transparent",borderRadius:6,padding:"2px 5px",cursor:"pointer",transition:"border .15s"}}
-            onMouseEnter={e=>e.currentTarget.style.borderColor="#e2e8f0"}
-            onMouseLeave={e=>e.currentTarget.style.borderColor="transparent"}
-          >
-            <div style={{width:16,height:16,borderRadius:"50%",background:ac(t.assignee||""),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:800,flexShrink:0}}>{ini(t.assignee||"")}</div>
-            <span>{saving?"salvando…":t.assignee||"—"}</span>
-            <span style={{fontSize:8,color:"#94a3b8"}}>✎</span>
-          </button>
-          {showAssign&&(
-            <div className="assignee-dropdown">
-              {anas.map(a=>(
-                <button key={a.accountId} onClick={()=>handleAssign(a.accountId,a.displayName)}>
-                  <div style={{width:20,height:20,borderRadius:"50%",background:ac(a.displayName),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:8,fontWeight:800,flexShrink:0}}>{ini(a.displayName)}</div>
-                  {a.displayName}
-                </button>
-              ))}
-            </div>
-          )}
+        <div style={{display:"flex",alignItems:"center",gap:4,fontSize:9,color:"#64748b",marginBottom:3}}>
+          <div style={{width:16,height:16,borderRadius:"50%",background:ac(t.assignee||""),color:"#fff",display:"flex",alignItems:"center",justifyContent:"center",fontSize:7,fontWeight:800,flexShrink:0}}>{ini(t.assignee||"")}</div>
+          <span>{t.assignee||"—"}</span>
         </div>
-        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 6px",marginTop:3}}>
+        <div style={{display:"grid",gridTemplateColumns:"1fr 1fr",gap:"2px 6px"}}>
           <div style={{fontSize:9,color:"#64748b"}}>🕐 {fd(t.created)}</div>
           <div style={{fontSize:9,color:"#94a3b8"}}>✏️ {fd(t.updated)}</div>
         </div>
@@ -248,29 +142,17 @@ function App(){
     );
   };
 
-  const Col=({col,items,isSim=true})=>{
-    const [over,setOver]=useState(false);
-    return(
-      <div
-        className={over?"drag-over":""}
-        onDragOver={e=>{e.preventDefault();setOver(true);}}
-        onDragLeave={()=>setOver(false)}
-        onDrop={e=>{setOver(false);onDrop(col.id,isSim)(e);}}
-        style={{background:"#fff",borderRadius:10,border:`1px solid ${col.bd}`,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}
-      >
-        <div style={{background:col.bg,padding:"8px 12px",borderBottom:`1px solid ${col.bd}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
-          <span style={{fontWeight:700,color:"#1e293b",fontSize:11}}>{col.icon} {col.label}</span>
-          <span style={{background:col.bk,color:"#fff",borderRadius:20,fontSize:10,fontWeight:700,padding:"2px 8px"}}>{items.length}</span>
-        </div>
-        <div style={{padding:8,maxHeight:520,overflowY:"auto"}}>
-          {items.length===0
-            ?<div style={{textAlign:"center",color:"#cbd5e1",fontSize:11,padding:"20px 0"}}>Nenhum ticket</div>
-            :items.map(t=><Card key={t.key} t={t} isSim={isSim} colId={col.id}/>)
-          }
-        </div>
+  const Col=({col,items,showHub=true})=>(
+    <div style={{background:"#fff",borderRadius:10,border:`1px solid ${col.bd}`,overflow:"hidden",boxShadow:"0 1px 3px rgba(0,0,0,.05)"}}>
+      <div style={{background:col.bg,padding:"8px 12px",borderBottom:`1px solid ${col.bd}`,display:"flex",alignItems:"center",justifyContent:"space-between"}}>
+        <span style={{fontWeight:700,color:"#1e293b",fontSize:11}}>{col.icon} {col.label}</span>
+        <span style={{background:col.bk,color:"#fff",borderRadius:20,fontSize:10,fontWeight:700,padding:"2px 8px"}}>{items.length}</span>
       </div>
-    );
-  };
+      <div style={{padding:8,maxHeight:520,overflowY:"auto"}}>
+        {items.length===0?<div style={{textAlign:"center",color:"#cbd5e1",fontSize:11,padding:"20px 0"}}>Nenhum ticket</div>:items.map(t=><Card key={t.key} t={t} showHub={showHub}/>)}
+      </div>
+    </div>
+  );
 
   return(
     <div style={{fontFamily:"Inter,sans-serif",background:"#f1f5f9",minHeight:"100vh",padding:"14px 18px"}}>
@@ -285,7 +167,7 @@ function App(){
             <a href={`${JIRA}/jira/servicedesk/projects/BSO/queues/custom/7342`} target="_blank" style={{fontSize:9,background:"#dbeafe",color:"#1e40af",padding:"2px 8px",borderRadius:20,fontWeight:700,textDecoration:"none"}}>Simulação #7342 ↗</a>
             <a href={`${JIRA}/jira/servicedesk/projects/BSO/queues/custom/8400`} target="_blank" style={{fontSize:9,background:"#fce7f3",color:"#be185d",padding:"2px 8px",borderRadius:20,fontWeight:700,textDecoration:"none"}}>Contratos #8400 ↗</a>
           </div>
-          <div style={{fontSize:9,color:"#94a3b8",marginTop:2}}>{last?`✅ Jira · ${last.toLocaleTimeString("pt-BR")} · auto-refresh 5min`:"📦 Carregando..."}</div>
+          <div style={{fontSize:9,color:"#94a3b8",marginTop:2}}>{last?`✅ Jira · ${last.toLocaleTimeString("pt-BR")} · auto-refresh 5min`:"📦 Dados locais — buscando Jira..."}</div>
         </div>
         <div style={{display:"flex",gap:8,alignItems:"center"}}>
           <button onClick={fetchAll} disabled={loading} style={{padding:"5px 12px",borderRadius:7,border:"1px solid #bbf7d0",background:loading?"#f1f5f9":"#f0fdf4",color:loading?"#94a3b8":"#16a34a",fontSize:10,fontWeight:700,cursor:loading?"not-allowed":"pointer"}}>{loading?"⏳ Buscando...":"🔄 Atualizar"}</button>
@@ -311,7 +193,7 @@ function App(){
       <div style={{background:"#fff",borderRadius:9,padding:"9px 12px",marginBottom:12,border:"1px solid #e2e8f0",display:"flex",gap:8,flexWrap:"wrap",alignItems:"center"}}>
         <input value={search} onChange={e=>setSearch(e.target.value)} placeholder="🔍 Chave, resumo, cliente, responsável..." style={{flex:1,minWidth:150,padding:"6px 10px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:11,background:"#f8fafc"}}/>
         <select value={af} onChange={e=>setAf(e.target.value)} style={{padding:"6px 9px",border:"1px solid #e2e8f0",borderRadius:7,fontSize:11,background:"#f8fafc",color:"#334155",cursor:"pointer",minWidth:160}}>
-          {["all",...(anas.map(a=>a.displayName))].map(a=><option key={a} value={a}>{a==="all"?"👤 Todos os analistas":a}</option>)}
+          {["all",...anas].map(a=><option key={a} value={a}>{a==="all"?"👤 Todos os analistas":a}</option>)}
         </select>
         {(af!=="all"||hf!=="all"||search)&&<button onClick={()=>{setAf("all");setHf("all");setSearch("");}} style={{padding:"5px 10px",borderRadius:7,border:"1px solid #fca5a5",background:"#fff1f2",color:"#991b1b",fontSize:10,fontWeight:600,cursor:"pointer"}}>✕ Limpar</button>}
         <span style={{fontSize:9,color:"#94a3b8"}}>{sf.length+cf.length} tickets</span>
@@ -323,14 +205,11 @@ function App(){
         ))}
       </div>
 
-      {/* Legenda drag & drop */}
-      <div style={{fontSize:9,color:"#94a3b8",marginBottom:8}}>💡 Arraste cards entre colunas para mover status · Clique no nome do analista para reatribuir</div>
-
       {(tab==="sim"||tab==="all")&&(
         <div style={{marginBottom:tab==="all"?20:0}}>
           {tab==="all"&&<div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>📊 SIMULAÇÃO — Fila #7342</div>}
           <div style={{display:"grid",gridTemplateColumns:"repeat(4,1fr)",gap:10}}>
-            {sg.map(({col,items})=><Col key={col.id} col={col} items={items} isSim={true}/>)}
+            {sg.map(({col,items})=><Col key={col.id} col={col} items={items} showHub={true}/>)}
           </div>
         </div>
       )}
@@ -338,7 +217,7 @@ function App(){
         <div>
           {tab==="all"&&<div style={{fontSize:11,fontWeight:700,color:"#64748b",marginBottom:8}}>📋 CONTRATOS — Fila #8400</div>}
           <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10}}>
-            {cg.map(({col,items})=><Col key={col.id} col={col} items={items} isSim={false}/>)}
+            {cg.map(({col,items})=><Col key={col.id} col={col} items={items} showHub={false}/>)}
           </div>
         </div>
       )}
