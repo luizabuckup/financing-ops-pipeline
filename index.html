@@ -34,6 +34,7 @@ const CC=[
 ];
 const IGN=["cancelado","cancelada","concluído","concluido","done","closed","resolvido","resolved","fechada"];
 function cid(s,cols){const v=(s||"").trim().toLowerCase();if(IGN.includes(v))return null;for(const c of cols)if(c.st.includes(v))return c.id;return cols[0].id;}
+function cleanSummary(s){return(s||"").replace(/<mailto:[^|]+\|([^>]+)>/g,"$1").replace(/:alert:/g,"⚠️").trim();}
 function pcs(raw){const m=f=>{const r=(raw||"").match(new RegExp(`\\*${f}:\\*\\s*([^\\*•\\|]+)`));return r?r[1].trim().replace(/<[^>]+>/g,"").trim():null;};const cl=m("Cliente"),pl=m("Placa"),pg=m("Forma de Pagamento");if(cl)return`${cl}${pl?` · ${pl}`:""}${pg?` · ${pg}`:""}`;return(raw||"").replace(/<[^>]+>/g,"").slice(0,120);}
 
 const SIM=[
@@ -86,7 +87,7 @@ function App(){
       const [d1,d2]=await Promise.all([r1.json(),r2.json()]);
       const map=i=>{
         const hub=i.fields?.customfield_22543?.value||null;
-        return{key:i.key,summary:i.fields?.summary||"",status:i.fields?.status?.name||"",assignee:i.fields?.assignee?.displayName||null,created:i.fields?.created,updated:i.fields?.updated,hub};
+        return{key:i.key,summary:cleanSummary(i.fields?.summary||""),status:i.fields?.status?.name||"",assignee:i.fields?.assignee?.displayName||null,created:i.fields?.created,updated:i.fields?.updated,hub};
       };
       const sim=(d1.issues||[]).map(map);
       const con=(d2.issues||[]).map(i=>({...map(i),summary:pcs(i.fields?.summary||"")}));
